@@ -1,0 +1,42 @@
+{
+  "$description": "Intertwine design tokens. Mirrors the Figma variables in 'Everyday enhancements module 3' (Color collection, Light + Dark modes). Names match each variable's iOS code syntax. Edit here, then run scripts/generate_colors.py to rebuild the asset catalog.",
+  "color": {
+    "colorBgCanvas":         { "light": "#FCF5E5", "dark": "#131A1D", "figma": "color/bg/canvas" },
+    "colorBgSurface":        { "light": "#FFFDFB", "dark": "#202B31", "figma": "color/bg/surface" },
+    "colorBgSunken":         { "light": "#FDF7EB", "dark": "#090D0F", "figma": "color/bg/sunken" },
+    "colorBgAccent":         { "light": "#3F5562", "dark": "#A7BAC1", "figma": "color/bg/accent" },
+    "colorBgAccentPressed":  { "light": "#2C3C45", "dark": "#BAC9CF", "figma": "color/bg/accent-pressed" },
+    "colorBgAccentSubtle":   { "light": "#E0E7E9", "dark": "#2C3C45", "figma": "color/bg/accent-subtle" },
+    "colorBgDisabled":       { "light": "#D6D0C3", "dark": "#2C3C45", "figma": "color/bg/disabled" },
+    "colorBgSuccess":        { "light": "#E3ECE2", "dark": "#1E2D20", "figma": "color/bg/success" },
+    "colorBgError":          { "light": "#F6E3E0", "dark": "#3A1E1E", "figma": "color/bg/error" },
+    "colorBgWarning":        { "light": "#F7EAD2", "dark": "#3A2B12", "figma": "color/bg/warning" },
+    "colorTextPrimary":      { "light": "#202B31", "dark": "#FDF9F1", "figma": "color/text/primary" },
+    "colorTextSecondary":    { "light": "#3F5562", "dark": "#BAC9CF", "figma": "color/text/secondary" },
+    "colorTextTertiary":     { "light": "#716C71", "dark": "#8E9EA4", "figma": "color/text/tertiary" },
+    "colorTextOnAccent":     { "light": "#FFFDFB", "dark": "#131A1D", "figma": "color/text/on-accent" },
+    "colorTextDisabled":     { "light": "#7E7B73", "dark": "#697A85", "figma": "color/text/disabled" },
+    "colorTextSuccess":      { "light": "#4A6B4E", "dark": "#A9C4AB", "figma": "color/text/success" },
+    "colorTextError":        { "light": "#9E3A3A", "dark": "#E6A3A3", "figma": "color/text/error" },
+    "colorTextWarning":      { "light": "#8A5A12", "dark": "#E8C48A", "figma": "color/text/warning" },
+    "colorBorderSubtle":     { "light": "#D6D0C3", "dark": "#2C3C45", "figma": "color/border/subtle" },
+    "colorBorderDefault":    { "light": "#697A85", "dark": "#697A85", "figma": "color/border/default" },
+    "colorBorderFocus":      { "light": "#3F5562", "dark": "#A7BAC1", "figma": "color/border/focus" },
+    "colorBorderError":      { "light": "#9E3A3A", "dark": "#E6A3A3", "figma": "color/border/error" },
+    "colorIconPrimary":      { "light": "#3F5562", "dark": "#BAC9CF", "figma": "color/icon/primary" },
+    "colorIconInactive":     { "light": "#716C71", "dark": "#758287", "figma": "color/icon/inactive" }
+  },
+  "spacing": { "xxs": 4, "xs": 8, "sm": 12, "md": 16, "lg": 20, "xl": 24, "2xl": 32, "3xl": 40 },
+  "radius":  { "sm": 8, "md": 12, "lg": 16, "xl": 24 },
+  "type": {
+    "Display/Large Title": { "font": "heading", "size": 34, "weight": "bold" },
+    "Display/Title 1":     { "font": "heading", "size": 28, "weight": "bold" },
+    "Display/Title 2":     { "font": "heading", "size": 22, "weight": "bold" },
+    "Display/Title 3":     { "font": "heading", "size": 20, "weight": "medium" },
+    "UI/Headline":         { "font": "system",  "size": 17, "weight": "semibold" },
+    "UI/Body":             { "font": "system",  "size": 17, "weight": "regular" },
+    "UI/Subheadline":      { "font": "system",  "size": 15, "weight": "regular" },
+    "UI/Footnote":         { "font": "system",  "size": 13, "weight": "regular" },
+    "UI/Caption":          { "font": "system",  "size": 12, "weight": "regular" }
+  }
+}
