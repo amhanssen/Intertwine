@@ -395,9 +395,11 @@ struct DetailsView: View {
                             ForEach(Array(store.data.registry.enumerated()), id: \.element.id) { index, item in
                                 if index > 0 { RowDivider() }
                                 HStack {
-                                    ListRow(title: item.name, subtitle: Format.price(item.price), systemImage: "gift",
+                                    ListRow(title: item.name,
+                                            subtitle: item.isFund ? store.registrySubtitle(item) : Format.price(item.price),
+                                            systemImage: item.isFund ? "banknote" : "gift",
                                             showsChevron: false)
-                                    if item.purchased {
+                                    if store.isTaken(item) {
                                         StatusBadge(kind: .bought)
                                             .padding(.trailing, Space.md)
                                     }

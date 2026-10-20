@@ -55,6 +55,7 @@ const icons = {
   back: '<path d="m15 6-6 6 6 6"/>',
   map: '<path d="M9 4 3.5 6v14L9 18l6 2 5.5-2V4L15 6 9 4Z"/><path d="M9 4v14M15 6v14"/>',
   check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
   bed: '<path d="M3 18v-9M3 14h18v4M21 14v-2.5a2.5 2.5 0 0 0-2.5-2.5H11v5"/><circle cx="7" cy="11.5" r="1.6"/>',
 };
 
@@ -95,7 +96,23 @@ function row({ href, title, subtitle, iconPath }) {
 
 const back = (href, label) => `<a class="back" href="${href}">${icon(icons.back, 20)}${label}</a>`;
 
-const mapsLink = (place) => `https://maps.apple.com/?q=${encodeURIComponent(place)}`;
+const isApple = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent);
+/** Opens the place in Apple Maps on Apple devices and Google Maps everywhere else. */
+const mapsLink = (place) => isApple
+  ? `https://maps.apple.com/?q=${encodeURIComponent(place)}`
+  : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place)}`;
+
+const money = (n) => `$${Number(n).toLocaleString("en-US")}`;
+
+/** "Add to calendar" for an event: a calendar file (Apple, Outlook) and a Google Calendar link. */
+function calendarButtons(event) {
+  if (!event.day || !event.start) return "";
+  return `
+    <div class="button-row">
+      <a class="button secondary" href="${calendarFile(event)}" download="${esc(event.name)}.ics">${icon(icons.calendar, 20)}Add to calendar</a>
+      <a class="button tertiary" href="${googleCalendarLink(event)}" target="_blank" rel="noopener">Google Calendar</a>
+    </div>`;
+}
 
 const needsReply = () => data.events().filter((e) => e.rsvpRequired && !data.rsvp(e.id));
 
@@ -118,7 +135,6 @@ const pages = {
           <span class="footnote secondary">${esc(couple())} · ${dayLong(data.wedding().date)}</span>
           <h1 class="large-title">Welcome, ${esc(firstName())}</h1>
         </div>
-        <span class="avatar" aria-hidden="true">${esc(firstName()[0])}</span>
       </header>
 
       ${due ? `
@@ -134,17 +150,24 @@ const pages = {
           ${eventCard(next)}
         </section>` : ""}
 
+      ${data.updates().length ? `
       <section class="stack">
         <h2 class="title3">Updates from ${esc(couple())}</h2>
         <div class="row-group">
           ${data.updates().map((u) => `
             <div class="row"><span class="text"><span class="headline">${esc(u.title)}</span><span class="subheadline secondary">${esc(u.detail)}</span></span></div>`).join("")}
         </div>
-      </section>
+      </section>` : ""}
+
+      ${!next ? `
+      <section class="panel accent">
+        <span class="title3">More soon</span>
+        <p class="subheadline">${esc(couple())} haven’t shared any events yet. Check back here for the schedule.</p>
+      </section>` : ""}
 
       <div class="row-group">
-        ${row({ href: "#/registry", title: "Registry", subtitle: `Browse ${esc(couple())}’s gift list`, iconPath: icons.gift })}
-        ${row({ href: "#/ask", title: "Have a question?", subtitle: `Ask ${esc(couple())} directly`, iconPath: icons.chat })}
+        ${row({ href: "#/registry", title: "Registry", subtitle: `Browse ${esc(couple())}’s gift list` })}
+        ${row({ href: "#/ask", title: "Have a question?", subtitle: `Ask ${esc(couple())} directly` })}
       </div>`;
   },
 
@@ -195,8 +218,10 @@ const pages = {
         <h2 class="title3">Where</h2>
         <p>${esc(event.venue)}</p>
         ${event.directions ? `<p class="subheadline secondary">${esc(event.directions)}</p>` : ""}
-        <a class="link-button" href="${mapsLink(event.venue)}" target="_blank" rel="noopener">Get directions</a>
+        ${event.venue ? `<a class="link-button" href="${mapsLink(event.venue)}" target="_blank" rel="noopener">Get directions</a>` : ""}
       </section>
+
+      ${reply?.attending || !event.rsvpRequired ? calendarButtons(event) : ""}
 
       <section class="panel">
         <h2 class="title3">What to wear</h2>
@@ -261,7 +286,7 @@ const pages = {
         <p class="secondary">${reply.attending ? `${esc(couple())} will see your reply right away.` : `${esc(couple())} will miss you.`}</p>
       </header>
       ${eventCard(event)}
-      ${reply.attending ? `<a class="button secondary" href="${calendarFile(event)}" download="${event.id}.ics">Add to calendar</a>` : ""}
+      ${reply.attending ? calendarButtons(event) : ""}
       <a class="button tertiary" href="#/schedule">Back to schedule</a>`;
   },
 
@@ -288,16 +313,19 @@ const pages = {
         <h1 class="large-title">Details</h1>
         <p class="subheadline secondary">${esc(couple())} · ${dayLong(w.date)}</p>
       </header>
+      ${w.photo ? `<img class="cover couple-photo" src="${esc(w.photo)}" alt="${esc(couple())}">` : ""}
+      ${w.venue || w.hotelInfo ? `
       <section class="panel">
         <h2 class="title3">Where to stay</h2>
-        <p class="headline">${esc(w.venue)}</p>
-        <p class="subheadline secondary">${esc(w.hotelInfo)}</p>
-      </section>
+        ${w.venue ? `<p class="headline">${esc(w.venue)}</p>` : ""}
+        ${w.hotelInfo ? `<p class="subheadline secondary">${esc(w.hotelInfo)}</p>` : ""}
+      </section>` : ""}
+      ${w.venue || w.parkingInfo ? `
       <section class="panel">
         <h2 class="title3">Getting there</h2>
-        <p class="subheadline secondary">${esc(w.parkingInfo)}</p>
-        <a class="link-button" href="${mapsLink(w.venue)}" target="_blank" rel="noopener">Get directions</a>
-      </section>
+        ${w.parkingInfo ? `<p class="subheadline secondary">${esc(w.parkingInfo)}</p>` : ""}
+        ${w.venue ? `<a class="link-button" href="${mapsLink(w.venue)}" target="_blank" rel="noopener">Get directions</a>` : ""}
+      </section>` : ""}
       <div class="row-group">
         ${row({ href: "#/registry", title: "Registry", subtitle: `Browse ${esc(couple())}’s gift list`, iconPath: icons.gift })}
         ${row({ href: "#/ask", title: `Ask ${esc(couple())}`, subtitle: "Send the couple a question", iconPath: icons.chat })}
@@ -308,6 +336,7 @@ const pages = {
   // GD2 · Registry
   registry(tab = "gifts") {
     const items = data.registry().filter((i) => (tab === "funds" ? i.fund : !i.fund));
+    const links = data.registryLinks();
     return `
       ${back("#/details", "Details")}
       <header class="stack">
@@ -319,13 +348,99 @@ const pages = {
         <label><input type="radio" name="tab" value="funds" ${tab === "funds" ? "checked" : ""} data-href="#/registry/funds"><span>Cash funds</span></label>
       </nav>
       <div class="row-group">
-        ${items.length ? items.map((i) => `
-          <div class="row"><span class="text">
-            <span class="headline">${esc(i.name)}</span>
-            <span class="subheadline secondary">$${i.price}${i.fund ? " suggested" : ""} · ${i.purchased ? "Already bought" : "Available"}</span>
-          </span></div>`).join("") : `<div class="row"><span class="text subheadline secondary">Nothing here yet.</span></div>`}
+        ${items.length ? items.map((i) => row({ href: `#/gift/${i.id}`, title: esc(i.name), subtitle: giftStatus(i) })).join("")
+          : `<div class="row"><span class="text subheadline secondary">${tab === "funds" ? "No cash funds yet." : "No gifts here yet."}</span></div>`}
       </div>
-      <p class="footnote tertiary">Buying through the site is coming soon. For now, let ${esc(couple())} know what you picked.</p>`;
+      ${links.length ? `
+        <section class="stack">
+          <h2 class="title3">Also on</h2>
+          <div class="row-group">
+            ${links.map((l) => `
+              <a class="row" href="${esc(safeLink(l.url))}" target="_blank" rel="noopener">
+                <span class="text"><span class="headline">${esc(l.name)}</span><span class="subheadline secondary">Opens the store’s website</span></span>
+                ${chevron}
+              </a>`).join("")}
+          </div>
+        </section>` : ""}`;
+  },
+
+  // A gift or cash fund: "I'll get this", or give toward the fund.
+  gift(id) {
+    const item = data.registry().find((i) => i.id === id);
+    if (!item) return notFound();
+    const backTo = back(item.fund ? "#/registry/funds" : "#/registry", "Registry");
+    const header = `
+      <header class="stack">
+        <h1 class="title1">${esc(item.name)}</h1>
+        <span class="headline secondary">${item.fund ? `${money(item.raised)} of ${money(item.price)}` : money(item.price)}</span>
+        ${item.note ? `<p>${esc(item.note)}</p>` : ""}
+      </header>`;
+    const howItWorks = `<p class="footnote tertiary">Intertwine doesn’t take payments. This lets ${esc(couple())} know, so nobody gives the same thing twice.</p>`;
+
+    if (item.fund) {
+      const pct = item.price > 0 ? Math.min(100, Math.round((item.raised / item.price) * 100)) : 0;
+      const choices = [25, 50, 100, 250];
+      return `
+        ${backTo}
+        ${header}
+        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="${pct}% of the goal"><span style="width:${pct}%"></span></div>
+        ${item.mine ? `
+          <section class="panel accent">
+            <span class="title3">You’re giving ${money(item.mine.amount)}</span>
+            ${item.mine.note ? `<p class="subheadline">Your note: “${esc(item.mine.note)}”</p>` : ""}
+            <p class="subheadline">You can change the amount below.</p>
+          </section>` : ""}
+        <form class="stack-lg" id="give-form" data-item="${item.id}">
+          <fieldset class="chips" style="border:0;margin:0;padding:0">
+            <legend class="label footnote secondary" style="margin-bottom:var(--space-xs)">How much would you like to give?</legend>
+            ${choices.map((n, i) => `<label><input type="radio" name="preset" value="${n}" ${(item.mine ? item.mine.amount === n : i === 1) ? "checked" : ""}><span>${money(n)}</span></label>`).join("")}
+            <label><input type="radio" name="preset" value="other" ${item.mine && !choices.includes(item.mine.amount) ? "checked" : ""}><span>Other</span></label>
+          </fieldset>
+          <div class="field" id="other-field" ${item.mine && !choices.includes(item.mine.amount) ? "" : "hidden"}>
+            <label for="other">Amount ($)</label>
+            <input id="other" name="other" type="number" inputmode="numeric" min="1" max="100000" step="1" value="${item.mine?.amount ?? ""}">
+          </div>
+          <div class="field">
+            <label for="note">Note for ${esc(couple())} (optional)</label>
+            <textarea id="note" name="note" maxlength="500" placeholder="Have the best trip!">${esc(item.mine?.note ?? "")}</textarea>
+          </div>
+          <button class="button primary" type="submit">${item.mine ? "Update my gift" : "Give to this fund"}</button>
+          ${item.mine ? `<button class="button tertiary" type="button" id="ungive" data-item="${item.id}">Take back my gift</button>` : ""}
+        </form>
+        ${howItWorks}`;
+    }
+
+    const store = item.link ? `<a class="button secondary" href="${esc(safeLink(item.link))}" target="_blank" rel="noopener">View in store</a>` : "";
+    if (item.mine) {
+      return `
+        ${backTo}
+        ${header}
+        <section class="panel accent">
+          <span class="title3">You’re getting this</span>
+          <p class="subheadline">${esc(couple())} can see that it’s taken, so nobody else buys it.</p>
+        </section>
+        ${store}
+        <button class="button tertiary" type="button" id="ungive" data-item="${item.id}">I won’t get this after all</button>`;
+    }
+    if (item.taken) {
+      return `
+        ${backTo}
+        ${header}
+        <section class="panel"><span class="badge info" style="align-self:flex-start">Already bought</span>
+          <p class="subheadline secondary">Someone already got this one. <a href="#/registry">See what’s still available</a>.</p></section>`;
+    }
+    return `
+      ${backTo}
+      ${header}
+      ${store}
+      <form class="stack-lg" id="give-form" data-item="${item.id}">
+        <div class="field">
+          <label for="note">Note for ${esc(couple())} (optional)</label>
+          <textarea id="note" name="note" maxlength="500" placeholder="Congratulations!"></textarea>
+        </div>
+        <button class="button primary" type="submit">I’ll get this</button>
+      </form>
+      ${howItWorks}`;
   },
 
   // GD3 · Ask the couple
@@ -365,6 +480,19 @@ const pages = {
   },
 };
 
+/** "$180 · Available", "$449 · Already bought", "You’re getting this" or "$1,240 of $3,000" (Figma GD2). */
+function giftStatus(item) {
+  if (item.fund) return `${money(item.raised)} of ${money(item.price)}${item.mine ? " · You gave" : ""}`;
+  if (item.mine) return `${money(item.price)} · You’re getting this`;
+  return `${money(item.price)} · ${item.taken ? "Already bought" : "Available"}`;
+}
+
+/** Only web links, so a typed link can't run code. */
+function safeLink(url) {
+  const full = /^[a-z]+:\/\//i.test(url) ? url : `https://${url}`;
+  return /^https?:\/\//i.test(full) ? full : "#";
+}
+
 function notFound() {
   return `
     <header class="stack">
@@ -374,6 +502,9 @@ function notFound() {
     <a class="button primary" href="#/home">Go to Home</a>`;
 }
 
+/** Calendar files need commas, semicolons and line breaks escaped. */
+const icsText = (text) => String(text ?? "").replace(/[\\;,]/g, (c) => `\\${c}`).replace(/\n/g, "\\n");
+
 /** A calendar file for the event, so guests can add it to Apple, Google or Outlook calendars. */
 function calendarFile(event) {
   const stamp = (day, t) => `${day.replaceAll("-", "")}T${t.replace(":", "")}00`;
@@ -382,17 +513,30 @@ function calendarFile(event) {
     `UID:${event.id}@intertwine`,
     `DTSTART:${stamp(event.day, event.start)}`,
     `DTEND:${stamp(event.day, event.end ?? event.start)}`,
-    `SUMMARY:${event.name} · ${couple()}`,
-    `LOCATION:${event.venue}`,
-    `DESCRIPTION:Dress code: ${event.dressCode}`,
+    `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").slice(0, 15)}Z`,
+    `SUMMARY:${icsText(`${event.name} · ${couple()}`)}`,
+    `LOCATION:${icsText(event.venue)}`,
+    `DESCRIPTION:${icsText(`Dress code: ${event.dressCode}`)}`,
     "END:VEVENT", "END:VCALENDAR",
   ].join("\r\n");
   return `data:text/calendar;charset=utf-8,${encodeURIComponent(ics)}`;
 }
 
+function googleCalendarLink(event) {
+  const stamp = (day, t) => `${day.replaceAll("-", "")}T${t.replace(":", "")}00`;
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: `${event.name} · ${couple()}`,
+    dates: `${stamp(event.day, event.start)}/${stamp(event.day, event.end ?? event.start)}`,
+    location: event.venue,
+    details: `Dress code: ${event.dressCode}`,
+  });
+  return `https://calendar.google.com/calendar/render?${params}`;
+}
+
 // ---------- Routing ----------
 
-const tabs = { home: "home", schedule: "schedule", event: "schedule", rsvp: "schedule", sent: "schedule", wear: "wear", details: "details", registry: "details", ask: "details" };
+const tabs = { home: "home", schedule: "schedule", event: "schedule", rsvp: "schedule", sent: "schedule", wear: "wear", details: "details", registry: "details", gift: "details", ask: "details" };
 const titles = { home: "Home", schedule: "Schedule", wear: "What to Wear", details: "Details", registry: "Registry", ask: "Ask the couple" };
 
 function render() {
@@ -406,7 +550,8 @@ function render() {
     if (a.dataset.tab === tab) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
   });
-  document.title = `${titles[name] ?? data.event(param)?.name ?? "Intertwine"} · ${couple()}’s wedding`;
+  const giftName = name === "gift" ? data.registry().find((i) => i.id === param)?.name : null;
+  document.title = `${titles[name] ?? giftName ?? data.event(param)?.name ?? "Intertwine"} · ${couple()}’s wedding`;
   window.scrollTo(0, 0);
   // After moving to another page, focus its heading so screen readers announce it.
   const heading = main.querySelector("h1");
@@ -448,6 +593,20 @@ main.addEventListener("submit", async (e) => {
     }));
     if (sent) location.hash = `#/sent/${id}`;
   }
+  if (form.id === "give-form") {
+    const item = form.dataset.item;
+    const preset = fields.get("preset");
+    const amount = preset === "other" ? Number(fields.get("other")) : Number(preset ?? 0);
+    if (preset && !(amount >= 1 && amount <= 100000)) {
+      form.querySelector("#other")?.focus();
+      return;
+    }
+    const note = String(fields.get("note") ?? "").trim();
+    if (await busy(form, "Saving…", () => data.give(item, preset ? Math.round(amount) : null, note))) {
+      render();
+      main.insertAdjacentHTML("afterbegin", `<p class="panel success-note subheadline" role="status">Thank you! ${esc(couple())} will see your gift.</p>`);
+    }
+  }
   if (form.id === "ask-form") {
     const text = String(fields.get("question") ?? "").trim();
     if (!text) return;
@@ -460,9 +619,25 @@ main.addEventListener("change", (e) => {
     main.querySelector("#party-field").hidden = e.target.value !== "yes";
   }
   if (e.target.dataset.href) location.hash = e.target.dataset.href;
+  if (e.target.name === "preset") {
+    const other = main.querySelector("#other-field");
+    other.hidden = e.target.value !== "other";
+    if (!other.hidden) other.querySelector("input").focus();
+  }
 });
 
 main.addEventListener("click", async (e) => {
+  if (e.target.id === "ungive") {
+    e.target.disabled = true;
+    try {
+      await data.ungive(e.target.dataset.item);
+      render();
+    } catch {
+      e.target.disabled = false;
+      e.target.insertAdjacentHTML("afterend",
+        '<p class="panel warning subheadline" role="alert">That didn’t go through. Check your connection and try again.</p>');
+    }
+  }
   if (e.target.id === "reset") {
     e.target.disabled = true;
     await data.resetDemo();

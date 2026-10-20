@@ -19,6 +19,16 @@ enum Supabase {
         return parts.url!
     }
 
+    /// Where a wedding's photo lives in the "photos" storage bucket, and its public address
+    /// (the website shows photos from there).
+    static func photoPath(_ fileName: String, wedding: UUID) -> String {
+        "\(wedding.uuidString.lowercased())/\(fileName)"
+    }
+
+    static func photoURL(_ fileName: String, wedding: UUID) -> String {
+        url.appendingPathComponent("storage/v1/object/public/photos/\(photoPath(fileName, wedding: wedding))").absoluteString
+    }
+
     /// A new guest's invite code: 16 random letters and digits, like the database makes.
     static func makeInviteCode() -> String {
         String(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased().prefix(16))
@@ -176,6 +186,28 @@ struct REST {
 
     func delete(_ table: String, _ query: String) async throws {
         _ = try await request("DELETE", "\(table)?\(query)", prefer: "return=minimal")
+    }
+
+    /// Changes some columns of the rows that match.
+    func update<T: Encodable>(_ table: String, _ query: String, _ values: T) async throws {
+        _ = try await request("PATCH", "\(table)?\(query)", body: try REST.encoder.encode(values), prefer: "return=minimal")
+    }
+
+    /// Puts a JPEG in the "photos" storage bucket, replacing one at the same path.
+    func uploadPhoto(_ jpeg: Data, path: String) async throws {
+        var request = URLRequest(url: URL(string: "storage/v1/object/photos/\(path)", relativeTo: Supabase.url)!)
+        request.httpMethod = "POST"
+        request.httpBody = jpeg
+        request.setValue(Supabase.publishableKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(session.accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        request.setValue("true", forHTTPHeaderField: "x-upsert")
+        request.setValue("max-age=31536000", forHTTPHeaderField: "Cache-Control")
+        let (data, response) = try await REST.send(request)
+        if response.statusCode == 401 { throw SupabaseError.notSignedIn }
+        guard (200..<300).contains(response.statusCode) else {
+            throw SupabaseError.server("Couldn’t upload a photo: " + (String(data: data, encoding: .utf8) ?? "\(response.statusCode)"))
+        }
     }
 
     private func request(_ method: String, _ path: String, body: Data? = nil, prefer: String? = nil) async throws -> (Data, HTTPURLResponse) {

@@ -133,6 +133,7 @@ struct CreateEventFlow: View {
                     Button("Remove", role: .destructive) {
                         event.photoFileName = nil
                         event.samplePhoto = nil
+                        event.remotePhotoURL = nil
                     }
                 }
                 .font(Typo.subheadline.weight(.semibold))
@@ -162,6 +163,7 @@ struct CreateEventFlow: View {
                 if let data = try? await item.loadTransferable(type: Data.self),
                    let name = PhotoStore.save(data) {
                     event.photoFileName = name
+                    event.remotePhotoURL = nil
                 }
                 loadingPhoto = false
                 pickedPhoto = nil

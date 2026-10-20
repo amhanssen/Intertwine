@@ -63,6 +63,17 @@ enum SampleData {
         rsvps.append(RSVP(eventID: engagement.id, guestID: rosa.id, attending: true, partyCount: 1, note: ""))
         rsvps.append(RSVP(eventID: shower.id, guestID: rosa.id, attending: true, partyCount: 1, note: "I’ll bring dessert!"))
 
+        let registry = [
+            RegistryItem(name: "Linen sheet set", price: 180, note: "Queen size, in oat."),
+            RegistryItem(name: "Dutch oven", price: 120),
+            RegistryItem(name: "Salad bowl", price: 45),
+            RegistryItem(name: "Stand mixer", price: 449),
+            RegistryItem(name: "Honeymoon fund", price: 3000, isFund: true, note: "Two weeks in Portugal."),
+            RegistryItem(name: "First home fund", price: 5000, isFund: true),
+        ]
+        func named(_ name: String) -> UUID? { guests.first { $0.name == name }?.id }
+        func daysAgo(_ days: Int) -> Date { Date().addingTimeInterval(-Double(days) * 86_400) }
+
         return AppData(
             wedding: Wedding(
                 coupleNames: "Mia & Ryan",
@@ -82,12 +93,14 @@ enum SampleData {
                 WeddingUpdate(title: "Welcome Party added", detail: "Drinks the night before · Sep 25"),
                 WeddingUpdate(title: "Hotel block closes Aug 25", detail: "Mention “Mia & Ryan” when you book"),
             ],
-            registry: [
-                RegistryItem(name: "Linen napkin set", price: 45),
-                RegistryItem(name: "Dutch oven", price: 120, purchased: true),
-                RegistryItem(name: "Honeymoon fund", price: 25),
-                RegistryItem(name: "Stand mixer", price: 380),
+            registry: registry,
+            gifts: [
+                RegistryGift(itemID: registry[3].id, guestID: named("Sarah Brown"), amount: 449,
+                             givenAt: daysAgo(20), thankYouSent: true),
+                RegistryGift(itemID: registry[4].id, guestID: named("James Bennett"), amount: 150, givenAt: daysAgo(17)),
+                RegistryGift(itemID: registry[5].id, guestID: named("Hannah Blair"), amount: 100, givenAt: daysAgo(15)),
             ],
+            registryLinks: [RegistryLink(name: "Home store registry", url: "https://example.com/registry/mia-and-ryan")],
             currentGuestID: rosa.id,
             isDemo: true)
     }
@@ -95,7 +108,7 @@ enum SampleData {
     /// A couple's own wedding from onboarding: no events, guests or gifts yet.
     static func empty(wedding: Wedding, account: CoupleAccount?) -> AppData {
         AppData(wedding: wedding, events: [], guests: [], rsvps: [], questions: [], updates: [],
-                registry: [], currentGuestID: UUID(), account: account, isDemo: false)
+                registry: [], gifts: [], registryLinks: [], currentGuestID: UUID(), account: account, isDemo: false)
     }
 
     private static func date(_ year: Int, _ month: Int, _ day: Int) -> Date {

@@ -4,7 +4,7 @@
 -- How access works
 -- • Couples sign in (from the app, later) and can read and change only their own wedding.
 -- • Guests don't sign in. Each guest has a private invite code in their link, and the
---   website can only call the three guest_ functions below with it. Guests can't read
+--   website can only call the guest_ functions below with it. Guests can't read
 --   the tables directly, so they never see other guests' details or replies.
 
 -- ---------- Tables ----------
@@ -89,6 +89,29 @@ create table if not exists registry_items (
   purchased boolean not null default false,
   created_at timestamptz not null default now()
 );
+-- Added later; "if not exists" keeps re-runs safe. For a cash fund, price is the goal.
+alter table registry_items add column if not exists link text not null default '';
+alter table registry_items add column if not exists note text not null default '';
+
+-- Who gave what: a guest's "I'll get this", or what they put toward a cash fund.
+create table if not exists registry_gifts (
+  id uuid primary key default gen_random_uuid(),
+  item_id uuid not null references registry_items on delete cascade,
+  guest_id uuid references guests on delete set null,
+  amount int not null default 0 check (amount between 0 and 100000),
+  note text not null default '' check (char_length(note) <= 500),
+  thank_you_sent boolean not null default false,
+  given_at timestamptz not null default now()
+);
+
+-- Registries the couple keeps at other stores (Figma CR3). Guests see them under "Also on".
+create table if not exists registry_links (
+  id uuid primary key default gen_random_uuid(),
+  wedding_id uuid not null references weddings on delete cascade,
+  name text not null,
+  url text not null check (url ~* '^https?://'),
+  created_at timestamptz not null default now()
+);
 
 -- A new guest's invite code: 16 random letters and digits, easy to put in a link.
 create or replace function make_invite_code() returns text language sql volatile as $$
@@ -105,6 +128,8 @@ alter table rsvps enable row level security;
 alter table questions enable row level security;
 alter table updates enable row level security;
 alter table registry_items enable row level security;
+alter table registry_gifts enable row level security;
+alter table registry_links enable row level security;
 
 create or replace function owns_wedding(w uuid) returns boolean
 language sql stable security definer set search_path = public as $$
@@ -139,7 +164,49 @@ drop policy if exists "couple owns registry" on registry_items;
 create policy "couple owns registry" on registry_items for all to authenticated
   using (owns_wedding(wedding_id)) with check (owns_wedding(wedding_id));
 
--- ---------- Guests: the only three things the website can do ----------
+drop policy if exists "couple owns gifts" on registry_gifts;
+create policy "couple owns gifts" on registry_gifts for all to authenticated
+  using (owns_wedding((select wedding_id from registry_items i where i.id = registry_gifts.item_id)))
+  with check (owns_wedding((select wedding_id from registry_items i where i.id = registry_gifts.item_id)));
+
+drop policy if exists "couple owns registry links" on registry_links;
+create policy "couple owns registry links" on registry_links for all to authenticated
+  using (owns_wedding(wedding_id)) with check (owns_wedding(wedding_id));
+
+-- ---------- Photos ----------
+-- Event and couple photos go in the public "photos" bucket, in a folder named after the
+-- wedding's id. Anyone with the address can see a photo (that's how the website shows
+-- them); only the couple can add, change or remove photos in their wedding's folder.
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('photos', 'photos', true, 5242880, array['image/jpeg', 'image/png'])
+on conflict (id) do update set public = true;
+
+-- True when a photo's path starts with a wedding this couple owns.
+create or replace function owns_photo(path text) returns boolean
+language plpgsql stable security definer set search_path = public as $$
+begin
+  return owns_wedding(split_part(path, '/', 1)::uuid);
+exception when invalid_text_representation then
+  return false;
+end $$;
+revoke all on function owns_photo(text) from public;
+grant execute on function owns_photo(text) to authenticated;
+
+drop policy if exists "couple adds photos" on storage.objects;
+create policy "couple adds photos" on storage.objects for insert to authenticated
+  with check (bucket_id = 'photos' and owns_photo(name));
+drop policy if exists "couple reads photos" on storage.objects;
+create policy "couple reads photos" on storage.objects for select to authenticated
+  using (bucket_id = 'photos' and owns_photo(name));
+drop policy if exists "couple changes photos" on storage.objects;
+create policy "couple changes photos" on storage.objects for update to authenticated
+  using (bucket_id = 'photos' and owns_photo(name));
+drop policy if exists "couple removes photos" on storage.objects;
+create policy "couple removes photos" on storage.objects for delete to authenticated
+  using (bucket_id = 'photos' and owns_photo(name));
+
+-- ---------- Guests: the only things the website can do ----------
 
 -- Everything one guest needs, found by their invite code. Null if the code is wrong.
 create or replace function guest_view(code text) returns json
@@ -171,10 +238,19 @@ begin
     'updates', coalesce((select json_agg(json_build_object('title', u.title, 'detail', u.detail)
         order by u.posted_at desc)
       from updates u where u.wedding_id = g.wedding_id), '[]'),
+    -- "taken": a gift someone already bought or said they'd get. "mine": this guest's own
+    -- gift, so they can see or undo it. Guests never see who else gave what.
     'registry', coalesce((select json_agg(json_build_object(
-        'id', i.id, 'name', i.name, 'price', i.price, 'fund', i.is_fund, 'purchased', i.purchased)
+        'id', i.id, 'name', i.name, 'price', i.price, 'fund', i.is_fund, 'link', i.link, 'note', i.note,
+        'taken', not i.is_fund and (i.purchased or exists (
+            select 1 from registry_gifts x where x.item_id = i.id and x.guest_id is distinct from g.id)),
+        'raised', (select coalesce(sum(x.amount), 0) from registry_gifts x where x.item_id = i.id),
+        'mine', (select json_build_object('amount', x.amount, 'note', x.note) from registry_gifts x
+                 where x.item_id = i.id and x.guest_id = g.id order by x.given_at desc limit 1))
         order by i.created_at)
       from registry_items i where i.wedding_id = g.wedding_id), '[]'),
+    'registryLinks', coalesce((select json_agg(json_build_object('name', l.name, 'url', l.url) order by l.created_at)
+      from registry_links l where l.wedding_id = g.wedding_id), '[]'),
     'questions', coalesce((select json_agg(json_build_object(
         'text', q.text, 'eventId', q.event_id, 'askedAt', q.asked_at, 'answer', q.answer)
         order by q.asked_at desc)
@@ -221,6 +297,41 @@ begin
   values (g.wedding_id, g.id, event, left(trim(question), 1000));
 end $$;
 
+-- "I'll get this" for a gift, or an amount toward a cash fund. Giving again replaces the
+-- guest's earlier gift to the same item.
+create or replace function guest_give(code text, item uuid, amount int default null, note text default '')
+returns void language plpgsql security definer set search_path = public as $$
+#variable_conflict use_variable
+declare g guests; i registry_items;
+begin
+  select * into g from guests where invite_code = code;
+  if not found then raise exception 'Invite not found'; end if;
+  select * into i from registry_items r where r.id = item and r.wedding_id = g.wedding_id;
+  if not found then raise exception 'Gift not found'; end if;
+  if not i.is_fund and (i.purchased or exists (
+       select 1 from registry_gifts x where x.item_id = i.id and x.guest_id is distinct from g.id)) then
+    raise exception 'Someone already got this gift';
+  end if;
+  if i.is_fund and (amount is null or amount < 1 or amount > 100000) then
+    raise exception 'Choose an amount';
+  end if;
+
+  delete from registry_gifts x where x.item_id = i.id and x.guest_id = g.id;
+  insert into registry_gifts (item_id, guest_id, amount, note)
+  values (i.id, g.id, case when i.is_fund then amount else i.price end, left(coalesce(note, ''), 500));
+end $$;
+
+-- Takes back the guest's own gift ("I won't get this after all").
+create or replace function guest_ungive(code text, item uuid)
+returns void language plpgsql security definer set search_path = public as $$
+#variable_conflict use_variable
+declare g guests;
+begin
+  select * into g from guests where invite_code = code;
+  if not found then raise exception 'Invite not found'; end if;
+  delete from registry_gifts x where x.item_id = item and x.guest_id = g.id;
+end $$;
+
 -- Only these functions are reachable without signing in.
 revoke all on function guest_view(text) from public;
 revoke all on function guest_rsvp(text, uuid, boolean, int, text) from public;
@@ -228,6 +339,10 @@ revoke all on function guest_ask(text, text, uuid) from public;
 grant execute on function guest_view(text) to anon, authenticated;
 grant execute on function guest_rsvp(text, uuid, boolean, int, text) to anon, authenticated;
 grant execute on function guest_ask(text, text, uuid) to anon, authenticated;
+revoke all on function guest_give(text, uuid, int, text) from public;
+revoke all on function guest_ungive(text, uuid) from public;
+grant execute on function guest_give(text, uuid, int, text) to anon, authenticated;
+grant execute on function guest_ungive(text, uuid) to anon, authenticated;
 revoke all on function owns_wedding(uuid) from public;
 grant execute on function owns_wedding(uuid) to authenticated;
 
@@ -300,11 +415,27 @@ begin
     (w, 'Hotel block closes Aug 25', 'Mention “Mia & Ryan” when you book', now() - interval '1 day'),
     (w, 'Welcome Party added', 'Drinks the night before · Sep 25', now());
 
-  insert into registry_items (wedding_id, name, price, is_fund, purchased, created_at) values
-    (w, 'Linen napkin set', 45, false, false, now()),
-    (w, 'Dutch oven', 120, false, true, now() + interval '1 second'),
-    (w, 'Honeymoon fund', 25, true, false, now() + interval '2 seconds'),
-    (w, 'Stand mixer', 380, false, false, now() + interval '3 seconds');
+  insert into registry_items (wedding_id, name, price, is_fund, purchased, note, created_at) values
+    (w, 'Linen sheet set', 180, false, false, 'Queen size, in oat.', now()),
+    (w, 'Dutch oven', 120, false, false, '', now() + interval '1 second'),
+    (w, 'Salad bowl', 45, false, false, '', now() + interval '2 seconds'),
+    (w, 'Stand mixer', 449, false, false, '', now() + interval '3 seconds'),
+    (w, 'Honeymoon fund', 3000, true, false, 'Two weeks in Portugal.', now() + interval '4 seconds'),
+    (w, 'First home fund', 5000, true, false, '', now() + interval '5 seconds');
+
+  -- A few gifts from other guests, so the couple's "Gifts bought" list has something in it.
+  insert into registry_gifts (item_id, guest_id, amount, given_at, thank_you_sent)
+  select i.id, g.id, i.price, now() - interval '20 days', true
+  from registry_items i, guests g where i.wedding_id = w and i.name = 'Stand mixer' and g.wedding_id = w and g.name = 'Sarah Brown';
+  insert into registry_gifts (item_id, guest_id, amount, given_at)
+  select i.id, g.id, 150, now() - interval '17 days'
+  from registry_items i, guests g where i.wedding_id = w and i.name = 'Honeymoon fund' and g.wedding_id = w and g.name = 'James Bennett';
+  insert into registry_gifts (item_id, guest_id, amount, given_at)
+  select i.id, g.id, 100, now() - interval '15 days'
+  from registry_items i, guests g where i.wedding_id = w and i.name = 'First home fund' and g.wedding_id = w and g.name = 'Hannah Blair';
+
+  insert into registry_links (wedding_id, name, url) values
+    (w, 'Home store registry', 'https://example.com/registry/mia-and-ryan');
 end $$;
 
 revoke all on function reset_demo() from public;

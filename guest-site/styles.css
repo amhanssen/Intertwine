@@ -286,3 +286,27 @@ div.row:hover { background: none; }
   mask: url(images/monogram.svg) center / contain no-repeat;
 }
 .hero-mono { width: 200px; height: 125px; margin: var(--space-md) auto 0; }
+
+/* ---------- Registry ---------- */
+
+.progress { height: 8px; border-radius: 999px; background: var(--bg-accent-subtle); overflow: hidden; }
+.progress span { display: block; height: 100%; background: var(--bg-accent); border-radius: inherit; }
+
+.chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: var(--space-xs); }
+.chips legend { grid-column: 1 / -1; }
+.chips label { position: relative; }
+.chips input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
+.chips span {
+  display: grid; place-items: center; min-height: 44px; border-radius: var(--radius-md);
+  border: 1px solid var(--border-default); background: var(--bg-surface);
+  font-weight: 600; color: var(--text-secondary);
+}
+.chips input:checked + span { background: var(--bg-accent); border-color: var(--bg-accent); color: var(--text-on-accent); }
+.chips input:focus-visible + span { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+
+.success-note { background: var(--bg-success); border-color: transparent; color: var(--text-success); }
+
+.button-row { display: flex; flex-direction: column; gap: var(--space-xxs); }
+.button .icon { flex: none; }
+.couple-photo { height: 240px; object-position: center 30%; }
+@media (min-width: 640px) { .couple-photo { height: 340px; } }

@@ -50,7 +50,9 @@ export const data = {
   wedding: () => view.wedding,
   guest: () => view.guest,
   updates: () => view.updates,
-  registry: () => view.registry,
+  // Filled in for databases set up before gifts existed (raised, taken and mine came later).
+  registry: () => view.registry.map((i) => ({ raised: 0, taken: !i.fund && i.purchased, mine: null, link: "", note: "", ...i })),
+  registryLinks: () => view.registryLinks ?? [],
   questions: () => view.questions,
 
   /** Published events, in date order. */
@@ -65,6 +67,17 @@ export const data = {
 
   async ask(text, eventId) {
     await call("guest_ask", { code, question: text, event: eventId || null });
+    await this.load();
+  },
+
+  /** "I'll get this" for a gift, or an amount toward a cash fund. */
+  async give(itemId, amount, note) {
+    await call("guest_give", { code, item: itemId, amount, note });
+    await this.load();
+  },
+
+  async ungive(itemId) {
+    await call("guest_ungive", { code, item: itemId });
     await this.load();
   },
 

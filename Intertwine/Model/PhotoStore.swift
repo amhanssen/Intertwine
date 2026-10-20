@@ -36,6 +36,11 @@ enum PhotoStore {
         return name
     }
 
+    /// The saved JPEG itself, for uploading.
+    static func data(named name: String) -> Data? {
+        try? Data(contentsOf: folder.appendingPathComponent(name))
+    }
+
     static func image(named name: String) -> UIImage? {
         if let cached = cache.object(forKey: name as NSString) { return cached }
         guard let image = UIImage(contentsOfFile: folder.appendingPathComponent(name).path) else { return nil }

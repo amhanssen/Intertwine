@@ -30,6 +30,7 @@ final class AppStore {
             data = SampleData.make()
         }
         role = UserDefaults.standard.string(forKey: Self.roleKey).flatMap(Role.init(rawValue:))
+        updateReminders()
     }
 
     /// Demo data saved by builds before the sample photos existed doesn't name them; fill them in.
@@ -55,6 +56,20 @@ final class AppStore {
             try encoded.write(to: fileURL, options: .atomic)
         } catch {
             print("Couldn't save: \(error)")
+        }
+        updateReminders()
+    }
+
+    @ObservationIgnored private var remindersTask: Task<Void, Never>?
+
+    /// Re-plans phone reminders shortly after changes stop coming in.
+    private func updateReminders() {
+        remindersTask?.cancel()
+        let snapshot = data
+        remindersTask = Task {
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            await Reminders.update(for: snapshot)
         }
     }
 
@@ -161,6 +176,13 @@ final class AppStore {
         live.status = .published
         upsert(live)
         let isFirstPublish = event.status == .draft
+        if isFirstPublish && !isDemo {
+            // The first time, iOS asks whether Intertwine may send reminders.
+            Task {
+                await Reminders.askPermission()
+                updateReminders()
+            }
+        }
         if isFirstPublish {
             coupleChange { data in
                 data.updates.insert(
@@ -200,8 +222,11 @@ final class AppStore {
     func setCouplePhoto(_ fileName: String?) {
         change { data in
             data.wedding.couplePhotoFileName = fileName
+            data.wedding.remotePhotoURL = nil
             if fileName == nil { data.wedding.couplePhoto = nil }
+            if data.remoteWeddingID != nil { data.needsUpload = true }
         }
+        Task { await sync() }
         removeUnusedPhotos()
     }
 
@@ -221,11 +246,98 @@ final class AppStore {
         }
     }
 
+    // MARK: - Registry (Figma: CR1–CR4)
+
+    var gifts: [RegistryGift] { data.gifts ?? [] }
+    var registryLinks: [RegistryLink] { data.registryLinks ?? [] }
+    var registryGifts: [RegistryItem] { data.registry.filter { !$0.isFund } }
+    var registryFunds: [RegistryItem] { data.registry.filter(\.isFund) }
+
+    func gifts(for item: RegistryItem) -> [RegistryGift] {
+        gifts.filter { $0.itemID == item.id }
+    }
+
+    /// A gift is taken once the couple marks it bought or a guest says they'll get it.
+    func isTaken(_ item: RegistryItem) -> Bool {
+        !item.isFund && (item.purchased || !gifts(for: item).isEmpty)
+    }
+
+    /// Money put toward a cash fund so far.
+    func raised(_ item: RegistryItem) -> Int {
+        gifts(for: item).reduce(0) { $0 + $1.amount }
+    }
+
+    var takenGiftCount: Int { registryGifts.filter(isTaken).count }
+    var fundsRaised: Int { registryFunds.reduce(0) { $0 + raised($1) } }
+
+    /// "$449 · Bought", "$180 · Available" or "$1,240 of $3,000" (Figma: CR1).
+    func registrySubtitle(_ item: RegistryItem) -> String {
+        if item.isFund { return "\(Format.price(raised(item))) of \(Format.price(item.price))" }
+        return "\(Format.price(item.price)) · \(isTaken(item) ? "Bought" : "Available")"
+    }
+
+    /// Adds a gift or fund, or saves changes to one.
+    func saveRegistryItem(_ item: RegistryItem) {
+        var clean = item
+        clean.name = clean.name.trimmingCharacters(in: .whitespaces)
+        clean.link = clean.link.trimmingCharacters(in: .whitespaces)
+        clean.note = clean.note.trimmingCharacters(in: .whitespacesAndNewlines)
+        clean.price = max(0, clean.price)
+        if clean.isFund { clean.purchased = false }
+        guard !clean.name.isEmpty else { return }
+        coupleChange { data in
+            if let index = data.registry.firstIndex(where: { $0.id == clean.id }) {
+                data.registry[index] = clean
+            } else {
+                data.registry.append(clean)
+            }
+        }
+    }
+
+    func deleteRegistryItem(_ id: UUID) {
+        coupleChange { data in
+            data.registry.removeAll { $0.id == id }
+            data.gifts?.removeAll { $0.itemID == id }
+            if data.remoteWeddingID != nil { data.deletedRegistryIDs = (data.deletedRegistryIDs ?? []) + [id] }
+        }
+    }
+
     func togglePurchased(_ itemID: UUID) {
         coupleChange { data in
             if let index = data.registry.firstIndex(where: { $0.id == itemID }) {
                 data.registry[index].purchased.toggle()
             }
+        }
+    }
+
+    func setThankYouSent(_ giftID: UUID, _ sent: Bool) {
+        coupleChange { data in
+            guard let index = data.gifts?.firstIndex(where: { $0.id == giftID }) else { return }
+            data.gifts?[index].thankYouSent = sent
+            if data.remoteWeddingID != nil {
+                data.changedGiftIDs = Array(Set((data.changedGiftIDs ?? []) + [giftID]))
+            }
+        }
+    }
+
+    /// Links a registry at another store. Returns false when the address isn't a web link.
+    @discardableResult
+    func addRegistryLink(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        let full = trimmed.contains("://") ? trimmed : "https://" + trimmed
+        guard let url = URL(string: full), let host = url.host, host.contains("."),
+              ["http", "https"].contains(url.scheme) else { return false }
+        let name = host.replacingOccurrences(of: "www.", with: "")
+        coupleChange { data in
+            data.registryLinks = (data.registryLinks ?? []) + [RegistryLink(name: name, url: url.absoluteString)]
+        }
+        return true
+    }
+
+    func deleteRegistryLink(_ id: UUID) {
+        coupleChange { data in
+            data.registryLinks?.removeAll { $0.id == id }
+            if data.remoteWeddingID != nil { data.deletedLinkIDs = (data.deletedLinkIDs ?? []) + [id] }
         }
     }
 
@@ -394,11 +506,14 @@ final class AppStore {
             let db = REST(session: session)
             let snapshot = data
             let startCount = editCount
-            try await Sync.delete(events: snapshot.deletedEventIDs ?? [], guests: snapshot.deletedGuestIDs ?? [], as: db)
+            try await Sync.delete(snapshot, as: db)
+            var uploadedPhotos: [String] = []
             if snapshot.needsUpload == true {
-                try await Sync.upload(snapshot, weddingID: weddingID, as: db)
+                uploadedPhotos = try await Sync.upload(snapshot, weddingID: weddingID, as: db)
             }
-            let downloaded = try await Sync.download(into: snapshot, weddingID: weddingID, as: db)
+            var downloaded = try await Sync.download(into: snapshot, weddingID: weddingID, as: db)
+            downloaded.changedGiftIDs = nil
+            downloaded.uploadedPhotos = Array(Set((snapshot.uploadedPhotos ?? []) + uploadedPhotos))
             // Only take the download if nothing changed on the phone meanwhile; otherwise sync again.
             if editCount == startCount {
                 change { data in
@@ -406,6 +521,8 @@ final class AppStore {
                     data.needsUpload = false
                     data.deletedEventIDs = nil
                     data.deletedGuestIDs = nil
+                    data.deletedRegistryIDs = nil
+                    data.deletedLinkIDs = nil
                 }
                 removeUnusedPhotos()
             } else {

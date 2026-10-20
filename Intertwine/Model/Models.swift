@@ -19,6 +19,8 @@ struct Wedding: Codable, Hashable {
     /// Photo of the two of them that the couple picked, saved by `PhotoStore`. Shown instead of
     /// `couplePhoto`.
     var couplePhotoFileName: String? = nil
+    /// The couple photo's web address when it was picked on another phone.
+    var remotePhotoURL: String? = nil
     /// Rough guest count from onboarding, for registry price suggestions.
     var expectedGuests: Int? = nil
 }
@@ -50,6 +52,9 @@ struct WeddingEvent: Identifiable, Codable, Hashable {
     /// Built-in photo for the demo events (an image in Assets.xcassets/Brand), shown until
     /// the couple picks their own.
     var samplePhoto: String? = nil
+    /// The cover photo's web address when it was picked on another phone (so this phone
+    /// doesn't have the file). Kept so syncing from here doesn't remove it.
+    var remotePhotoURL: String? = nil
 
     /// Everything a guest needs before the event can be published.
     var missingDetails: [String] {
@@ -115,8 +120,67 @@ struct WeddingUpdate: Identifiable, Codable, Hashable {
 struct RegistryItem: Identifiable, Codable, Hashable {
     var id: UUID = UUID()
     var name: String
+    /// What the gift costs, or for a cash fund, the goal.
     var price: Int
+    /// Marked bought by the couple (for example, a gift that came from another store).
     var purchased: Bool = false
+    /// A cash fund guests put money toward, rather than one gift one guest buys.
+    var isFund: Bool = false
+    /// Where guests can buy it. Empty when there isn't one.
+    var link: String = ""
+    /// A line for guests, e.g. "Queen size, in oat."
+    var note: String = ""
+
+    init(id: UUID = UUID(), name: String, price: Int, purchased: Bool = false, isFund: Bool = false,
+         link: String = "", note: String = "") {
+        self.id = id
+        self.name = name
+        self.price = price
+        self.purchased = purchased
+        self.isFund = isFund
+        self.link = link
+        self.note = note
+    }
+
+    // Data saved before funds and links existed doesn't have them.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        price = try c.decode(Int.self, forKey: .price)
+        purchased = try c.decodeIfPresent(Bool.self, forKey: .purchased) ?? false
+        isFund = try c.decodeIfPresent(Bool.self, forKey: .isFund) ?? name.localizedCaseInsensitiveContains("fund")
+        link = try c.decodeIfPresent(String.self, forKey: .link) ?? ""
+        note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
+    }
+
+    /// The store link as a web address guests can open, if it is one.
+    var linkURL: URL? {
+        let text = link.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return nil }
+        let full = text.contains("://") ? text : "https://" + text
+        guard let url = URL(string: full), url.host != nil, ["http", "https"].contains(url.scheme) else { return nil }
+        return url
+    }
+}
+
+/// One guest's gift: "I'll get this" for a gift, or an amount toward a cash fund.
+/// Made on the website; the couple tracks thank-you notes (Figma: CR4 · Track gifts).
+struct RegistryGift: Identifiable, Codable, Hashable {
+    var id: UUID = UUID()
+    var itemID: UUID
+    var guestID: UUID?
+    var amount: Int
+    var note: String = ""
+    var givenAt: Date = Date()
+    var thankYouSent: Bool = false
+}
+
+/// A registry the couple keeps at another store (Figma: CR3 · Link a registry).
+struct RegistryLink: Identifiable, Codable, Hashable {
+    var id: UUID = UUID()
+    var name: String
+    var url: String
 }
 
 /// Everything the app stores. Saved as one JSON file on the device.
@@ -128,6 +192,9 @@ struct AppData: Codable {
     var questions: [GuestQuestion]
     var updates: [WeddingUpdate]
     var registry: [RegistryItem]
+    /// Who gave what. Nil in data saved before gifts existed.
+    var gifts: [RegistryGift]? = nil
+    var registryLinks: [RegistryLink]? = nil
     /// The guest whose view the app shows in guest mode (demo: Rosa).
     var currentGuestID: UUID
     var account: CoupleAccount? = nil
@@ -142,6 +209,12 @@ struct AppData: Codable {
     var needsUpload: Bool? = nil
     var deletedEventIDs: [UUID]? = nil
     var deletedGuestIDs: [UUID]? = nil
+    var deletedRegistryIDs: [UUID]? = nil
+    var deletedLinkIDs: [UUID]? = nil
+    /// Gifts whose thank-you checkbox changed on the phone, still to send to the database.
+    var changedGiftIDs: [UUID]? = nil
+    /// Photos already copied to the database, so each one is uploaded only once.
+    var uploadedPhotos: [String]? = nil
 }
 
 extension Calendar {
