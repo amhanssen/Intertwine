@@ -7,6 +7,8 @@ struct ProfileMenu: View {
     /// Shown in place of the initials when set.
     var photo: Image? = nil
     @State private var confirmReset = false
+    @State private var confirmSignOut = false
+    @State private var goingOnline = false
 
     var body: some View {
         Menu {
@@ -14,6 +16,15 @@ struct ProfileMenu: View {
                 Button("Switch to guest view", systemImage: "person") { store.switchRole(to: .guest) }
             } else {
                 Button("Switch to couple view", systemImage: "heart") { store.switchRole(to: .couple) }
+            }
+            if store.isSyncing, let email = store.signedInEmail {
+                Section("Signed in as \(email)") {
+                    Button("Sync now", systemImage: "arrow.triangle.2.circlepath") { Task { await store.sync() } }
+                    Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { confirmSignOut = true }
+                }
+            }
+            if !store.isDemo && !store.isSyncing && store.role == .couple {
+                Button("Share with guests online", systemImage: "globe") { goingOnline = true }
             }
             Button("Back to start", systemImage: "arrow.uturn.backward") { store.switchRole(to: nil) }
             if store.isDemo {
@@ -36,6 +47,12 @@ struct ProfileMenu: View {
             }
         }
         .accessibilityLabel("Profile and settings")
+        .sheet(isPresented: $goingOnline) { GoOnlineSheet() }
+        .confirmationDialog("Sign out?", isPresented: $confirmSignOut, titleVisibility: .visible) {
+            Button("Sign out", role: .destructive) { store.signOut() }
+        } message: {
+            Text("Your wedding stays saved in your account. Sign in again to open it on this phone.")
+        }
         .confirmationDialog("Reset the demo?", isPresented: $confirmReset, titleVisibility: .visible) {
             Button("Reset demo data", role: .destructive) { store.resetDemo() }
         } message: {
@@ -165,6 +182,108 @@ struct OptionalDateField: View {
                     .font(Typo.footnote)
                     .foregroundStyle(Palette.textError)
             }
+        }
+    }
+}
+
+/// Shown on the couple's Home when the last sync didn't go through.
+struct SyncProblemBanner: View {
+    @Environment(AppStore.self) private var store
+
+    var body: some View {
+        if case .failed(let message) = store.syncState {
+            Panel(background: Palette.bgWarning, bordered: false) {
+                Text(message)
+                    .font(Typo.subheadline)
+                    .foregroundStyle(Palette.textWarning)
+                if store.session != nil {
+                    Button("Try again") { Task { await store.sync() } }
+                        .font(Typo.headline)
+                        .foregroundStyle(Palette.textWarning)
+                }
+            }
+        }
+    }
+}
+
+/// For a wedding set up on this phone only: create an account (or sign in) and put the
+/// wedding online, so guests can open it on the website.
+struct GoOnlineSheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @State private var hasAccount = false
+    @State private var email = ""
+    @State private var password = ""
+    @State private var working = false
+    @State private var waitingForConfirmation = false
+    @State private var message: String?
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Space.lg) {
+                    ScreenHeader(title: "Share with guests online",
+                                 subtitle: "Make an account so guests can see \(store.wedding.coupleNames)’s events and RSVP on the wedding website. Everything you’ve set up comes with you.")
+                    Picker("Account", selection: $hasAccount) {
+                        Text("New account").tag(false)
+                        Text("I have an account").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    LabeledField(label: "Email", text: $email, placeholder: "mia@example.com")
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.emailAddress)
+                        .textContentType(.username)
+                        .autocorrectionDisabled()
+                    LabeledField(label: "Password", text: $password, placeholder: hasAccount ? "" : "At least 8 characters",
+                                 helper: hasAccount ? nil : "At least 8 characters", secure: true)
+                        .textContentType(hasAccount ? .password : .newPassword)
+                    if let message {
+                        Panel(background: waitingForConfirmation ? Palette.bgAccentSubtle : Palette.bgWarning, bordered: false) {
+                            Text(message)
+                                .font(Typo.subheadline)
+                                .foregroundStyle(waitingForConfirmation ? Palette.textPrimary : Palette.textWarning)
+                        }
+                    }
+                }
+                .screenStyle()
+            }
+            .background(Palette.bgCanvas)
+            .pinnedFooter {
+                Button(buttonTitle) { Task { await go() } }
+                    .buttonStyle(.primary)
+                    .disabled(!email.contains("@") || password.count < (hasAccount ? 1 : 8) || working)
+            }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+            }
+        }
+    }
+
+    private var buttonTitle: String {
+        if working { return "One moment…" }
+        if waitingForConfirmation { return "I’ve confirmed my email" }
+        return hasAccount ? "Sign in and share" : "Create account and share"
+    }
+
+    private func go() async {
+        working = true
+        defer { working = false }
+        let address = email.trimmingCharacters(in: .whitespaces)
+        do {
+            if hasAccount || waitingForConfirmation {
+                // Signing in would replace this phone's wedding with the account's, if it has one,
+                // so sign in without loading it: this wedding is the one going online.
+                try await store.signInKeepingWedding(email: address, password: password)
+            } else {
+                try await store.createAccount(email: address, password: password)
+            }
+            store.moveWeddingOnline()
+            dismiss()
+        } catch SupabaseError.needsEmailConfirmation {
+            waitingForConfirmation = true
+            message = "We sent a link to \(address). Open it, then come back and tap “I’ve confirmed my email”."
+        } catch {
+            message = error.localizedDescription
         }
     }
 }

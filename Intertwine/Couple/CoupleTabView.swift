@@ -43,6 +43,7 @@ struct CoupleHomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Space.xl) {
                     header
+                    SyncProblemBanner()
                     atAGlance
                     needsAttention
                     if let next = store.nextPublishedEvent {
@@ -59,6 +60,8 @@ struct CoupleHomeView: View {
                 }
                 .screenStyle()
             }
+            // Pull down to bring in new RSVPs and questions from the website.
+            .refreshable { await store.sync() }
             .background(Palette.bgCanvas)
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: UUID.self) { CoupleEventDetailView(eventID: $0) }

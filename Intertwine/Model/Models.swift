@@ -23,7 +23,7 @@ struct Wedding: Codable, Hashable {
     var expectedGuests: Int? = nil
 }
 
-/// Who set up the wedding (Figma: O3 · Create account). Stays on the phone until accounts exist.
+/// Who set up the wedding (Figma: O3 · Create account).
 struct CoupleAccount: Codable, Hashable {
     var name: String
     var partnerName: String
@@ -81,6 +81,10 @@ struct Guest: Identifiable, Codable, Hashable {
     var name: String
     /// How many people this invitation covers, including the guest.
     var partySize: Int = 1
+    /// The private part of the guest's website link. Set when the guest is added.
+    var inviteCode: String? = nil
+
+    var inviteLink: URL? { inviteCode.map(Supabase.inviteLink(for:)) }
 }
 
 struct RSVP: Codable, Hashable {
@@ -130,6 +134,14 @@ struct AppData: Codable {
     /// False once a couple sets up their own wedding. Nil in data saved before onboarding existed,
     /// which was always the demo.
     var isDemo: Bool? = nil
+
+    // Syncing with the database (see Sync.swift). Only for a signed-in couple's own wedding.
+    /// The wedding's id in the database. Nil when it lives only on this phone.
+    var remoteWeddingID: UUID? = nil
+    /// True when there are changes on the phone the database doesn't have yet.
+    var needsUpload: Bool? = nil
+    var deletedEventIDs: [UUID]? = nil
+    var deletedGuestIDs: [UUID]? = nil
 }
 
 extension Calendar {

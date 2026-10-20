@@ -11,6 +11,7 @@ struct OnboardingFlow: View {
     @State private var draft = OnboardingDraft()
     @State private var confirmDemo = false
     @State private var confirmStartOver = false
+    @State private var signingIn = false
 
     enum Step: Hashable {
         case role, account, wedding, invite
@@ -79,8 +80,16 @@ struct OnboardingFlow: View {
                 Button("Set up a new wedding") { confirmStartOver = true }
                     .buttonStyle(.secondary)
             }
+            if store.isDemo {
+                Button("I already have an account") { signingIn = true }
+                    .buttonStyle(.tertiary)
+            }
             Button("Try the demo") { confirmDemo = true }
                 .buttonStyle(.tertiary)
+        }
+        .sheet(isPresented: $signingIn) {
+            // Signed in, but no wedding on this account yet: set one up.
+            SignInSheet { path = [.role, .wedding] }
         }
         .toolbar(.hidden, for: .navigationBar)
         .confirmationDialog("Set up a new wedding?", isPresented: $confirmStartOver, titleVisibility: .visible) {
@@ -196,8 +205,13 @@ struct RoleStep: View {
 // MARK: - O3 · Create account
 
 struct AccountStep: View {
+    @Environment(AppStore.self) private var store
     @Bindable var draft: OnboardingDraft
     let onContinue: () -> Void
+    @State private var password = ""
+    @State private var working = false
+    @State private var message: String?
+    @State private var waitingForConfirmation = false
 
     var body: some View {
         ScrollView {
@@ -206,19 +220,120 @@ struct AccountStep: View {
                              subtitle: "You and your partner can both sign in to manage the wedding.")
                 LabeledField(label: "Your name", text: $draft.name, placeholder: "Mia")
                 LabeledField(label: "Your partner’s name", text: $draft.partnerName, placeholder: "Ryan")
-                LabeledField(label: "Email (optional)", text: $draft.email, placeholder: "mia@example.com",
-                             helper: "For signing in once accounts are added. For now everything stays on this phone.")
+                LabeledField(label: "Email", text: $draft.email, placeholder: "mia@example.com")
                     .textInputAutocapitalization(.never)
                     .keyboardType(.emailAddress)
+                    .textContentType(.username)
                     .autocorrectionDisabled()
+                LabeledField(label: "Password", text: $password, placeholder: "At least 8 characters",
+                             helper: "At least 8 characters", secure: true)
+                    .textContentType(.newPassword)
+                if let message {
+                    Panel(background: waitingForConfirmation ? Palette.bgAccentSubtle : Palette.bgWarning, bordered: false) {
+                        Text(message)
+                            .font(Typo.subheadline)
+                            .foregroundStyle(waitingForConfirmation ? Palette.textPrimary : Palette.textWarning)
+                    }
+                }
             }
             .screenStyle()
         }
         .scrollDismissesKeyboard(.interactively)
         .pinnedFooter {
-            Button("Continue", action: onContinue)
-                .buttonStyle(.primary)
-                .disabled(draft.name.trimmed.isEmpty || draft.partnerName.trimmed.isEmpty)
+            Button(waitingForConfirmation ? "I’ve confirmed my email" : (working ? "Creating account…" : "Create account")) {
+                Task { await createAccount() }
+            }
+            .buttonStyle(.primary)
+            .disabled(!canCreate || working)
+            Button("Set up on this phone only") { onContinue() }
+                .buttonStyle(.tertiary)
+                .disabled(draft.name.trimmed.isEmpty || draft.partnerName.trimmed.isEmpty || working)
+        }
+    }
+
+    private var canCreate: Bool {
+        !draft.name.trimmed.isEmpty && !draft.partnerName.trimmed.isEmpty
+            && draft.email.contains("@") && password.count >= 8
+    }
+
+    /// Creates the account, or after an email confirmation, signs in with it.
+    private func createAccount() async {
+        working = true
+        defer { working = false }
+        do {
+            if waitingForConfirmation {
+                if try await store.signIn(email: draft.email.trimmed, password: password) {
+                    return // This account already had a wedding; it's now open.
+                }
+            } else {
+                try await store.createAccount(email: draft.email.trimmed, password: password)
+            }
+            message = nil
+            onContinue()
+        } catch SupabaseError.needsEmailConfirmation {
+            waitingForConfirmation = true
+            message = "We sent a link to \(draft.email.trimmed). Open it on this phone or your computer, then come back and tap “I’ve confirmed my email”."
+        } catch {
+            message = error.localizedDescription
+        }
+    }
+}
+
+// MARK: - Sign in (O1 · "I already have an account")
+
+struct SignInSheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    /// Called when the account signed in but has no wedding yet.
+    let onNoWedding: () -> Void
+    @State private var email = ""
+    @State private var password = ""
+    @State private var working = false
+    @State private var message: String?
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Space.lg) {
+                    ScreenHeader(title: "Welcome back", subtitle: "Sign in to open your wedding on this phone.")
+                    LabeledField(label: "Email", text: $email, placeholder: "mia@example.com")
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.emailAddress)
+                        .textContentType(.username)
+                        .autocorrectionDisabled()
+                    LabeledField(label: "Password", text: $password, secure: true)
+                        .textContentType(.password)
+                    if let message {
+                        Panel(background: Palette.bgWarning, bordered: false) {
+                            Text(message)
+                                .font(Typo.subheadline)
+                                .foregroundStyle(Palette.textWarning)
+                        }
+                    }
+                }
+                .screenStyle()
+            }
+            .background(Palette.bgCanvas)
+            .pinnedFooter {
+                Button(working ? "Signing in…" : "Sign in") { Task { await signIn() } }
+                    .buttonStyle(.primary)
+                    .disabled(!email.contains("@") || password.isEmpty || working)
+            }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+            }
+        }
+    }
+
+    private func signIn() async {
+        working = true
+        defer { working = false }
+        do {
+            let found = try await store.signIn(email: email.trimmingCharacters(in: .whitespaces), password: password)
+            dismiss()
+            if !found { onNoWedding() }
+        } catch {
+            message = error.localizedDescription
         }
     }
 }

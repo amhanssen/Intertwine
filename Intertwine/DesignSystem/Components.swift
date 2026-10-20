@@ -64,6 +64,8 @@ struct LabeledField: View {
     var helper: String? = nil
     var error: String? = nil
     var multiline: Bool = false
+    /// Hides what's typed, for passwords.
+    var secure: Bool = false
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -72,7 +74,9 @@ struct LabeledField: View {
                 .font(Typo.footnote)
                 .foregroundStyle(Palette.textSecondary)
             Group {
-                if multiline {
+                if secure {
+                    SecureField(placeholder, text: $text)
+                } else if multiline {
                     TextField(placeholder, text: $text, axis: .vertical)
                         .lineLimit(2...5)
                 } else {

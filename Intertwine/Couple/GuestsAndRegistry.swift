@@ -51,18 +51,37 @@ struct GuestsView: View {
                             }
                             .fixedSize()
                         }
+                        if store.isSyncing && !store.data.guests.isEmpty {
+                            Text("Tap \(Image(systemName: "square.and.arrow.up")) to send a guest their personal link to the wedding website.")
+                                .font(Typo.footnote)
+                                .foregroundStyle(Palette.textTertiary)
+                        }
                         RowGroup {
                             ForEach(Array(store.data.guests.enumerated()), id: \.element.id) { index, guest in
                                 if index > 0 { RowDivider() }
-                                ListRow(title: guest.name,
-                                        subtitle: guest.partySize == 1 ? "Invitation for 1" : "Invitation for \(guest.partySize)",
-                                        showsChevron: false)
+                                HStack(spacing: 0) {
+                                    ListRow(title: guest.name,
+                                            subtitle: guest.partySize == 1 ? "Invitation for 1" : "Invitation for \(guest.partySize)",
+                                            showsChevron: false)
+                                    if store.isSyncing, let link = guest.inviteLink {
+                                        ShareLink(item: link,
+                                                  message: Text("Here’s your invite to \(store.wedding.coupleNames)’s wedding. RSVP and see every event here:")) {
+                                            Image(systemName: "square.and.arrow.up")
+                                                .font(.system(size: 17, weight: .medium))
+                                                .foregroundStyle(Palette.iconPrimary)
+                                                .frame(width: 44, height: 44)
+                                        }
+                                        .accessibilityLabel("Send \(guest.name) their invite link")
+                                        .padding(.trailing, Space.xs)
+                                    }
+                                }
                             }
                         }
                     }
                 }
                 .screenStyle()
             }
+            .refreshable { await store.sync() }
             .background(Palette.bgCanvas)
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: UUID.self) { CoupleEventDetailView(eventID: $0) }

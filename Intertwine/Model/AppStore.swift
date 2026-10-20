@@ -49,6 +49,7 @@ final class AppStore {
 
     private func change(_ edit: (inout AppData) -> Void) {
         edit(&data)
+        editCount += 1
         do {
             let encoded = try JSONEncoder().encode(data)
             try encoded.write(to: fileURL, options: .atomic)
@@ -161,7 +162,7 @@ final class AppStore {
         upsert(live)
         let isFirstPublish = event.status == .draft
         if isFirstPublish {
-            change { data in
+            coupleChange { data in
                 data.updates.insert(
                     WeddingUpdate(title: "\(live.name) added", detail: live.day.map { Format.dayShort($0) } ?? "New event"),
                     at: 0)
@@ -170,7 +171,7 @@ final class AppStore {
     }
 
     private func upsert(_ event: WeddingEvent) {
-        change { data in
+        coupleChange { data in
             if let index = data.events.firstIndex(where: { $0.id == event.id }) {
                 data.events[index] = event
             } else {
@@ -181,9 +182,10 @@ final class AppStore {
     }
 
     func deleteEvent(_ id: UUID) {
-        change { data in
+        coupleChange { data in
             data.events.removeAll { $0.id == id }
             data.rsvps.removeAll { $0.eventID == id }
+            if data.remoteWeddingID != nil { data.deletedEventIDs = (data.deletedEventIDs ?? []) + [id] }
         }
         removeUnusedPhotos()
     }
@@ -206,13 +208,13 @@ final class AppStore {
     func addGuest(named name: String, partySize: Int) {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
-        change { $0.guests.append(Guest(name: trimmed, partySize: max(1, partySize))) }
+        coupleChange { $0.guests.append(Guest(name: trimmed, partySize: max(1, partySize), inviteCode: Supabase.makeInviteCode())) }
     }
 
     func answer(_ questionID: UUID, with text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        change { data in
+        coupleChange { data in
             if let index = data.questions.firstIndex(where: { $0.id == questionID }) {
                 data.questions[index].answer = trimmed
             }
@@ -220,7 +222,7 @@ final class AppStore {
     }
 
     func togglePurchased(_ itemID: UUID) {
-        change { data in
+        coupleChange { data in
             if let index = data.registry.firstIndex(where: { $0.id == itemID }) {
                 data.registry[index].purchased.toggle()
             }
@@ -248,14 +250,21 @@ final class AppStore {
 
     // MARK: - Onboarding
 
-    /// Replaces whatever is on the phone with the couple's own, empty wedding.
+    /// Replaces whatever is on the phone with the couple's own, empty wedding. When they're
+    /// signed in, it's also created in the database.
     func setUpWedding(_ wedding: Wedding, account: CoupleAccount?) {
-        change { $0 = SampleData.empty(wedding: wedding, account: account) }
+        coupleChange { data in
+            data = SampleData.empty(wedding: wedding, account: account)
+            if self.session != nil {
+                data.remoteWeddingID = UUID()
+                data.needsUpload = true
+            }
+        }
         removeUnusedPhotos()
     }
 
     func updateWedding(_ wedding: Wedding) {
-        change { $0.wedding = wedding }
+        coupleChange { $0.wedding = wedding }
     }
 
     func addGuests(named names: [String]) {
@@ -264,8 +273,8 @@ final class AppStore {
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty && !existing.contains($0) }
         guard !new.isEmpty else { return }
-        change { data in
-            data.guests.append(contentsOf: new.map { Guest(name: $0) })
+        coupleChange { data in
+            data.guests.append(contentsOf: new.map { Guest(name: $0, inviteCode: Supabase.makeInviteCode()) })
         }
     }
 
@@ -274,11 +283,146 @@ final class AppStore {
     func resetDemo() {
         change { $0 = SampleData.make() }
         removeUnusedPhotos()
+        signOutOfDatabase()
     }
 
     /// Loads Mia & Ryan's sample wedding and opens one side of it.
     func startDemo(as role: Role) {
         resetDemo()
         switchRole(to: role)
+    }
+
+    // MARK: - Account and syncing (see Sync.swift)
+
+    /// The signed-in couple, if any. A wedding syncs only while they're signed in.
+    private(set) var session: Session? = SessionStore.load()
+    private(set) var syncState: SyncState = .idle
+    private(set) var lastSynced: Date?
+
+    enum SyncState: Equatable {
+        case idle, syncing
+        case failed(String)
+    }
+
+    var isSyncing: Bool { data.remoteWeddingID != nil && session != nil }
+    var signedInEmail: String? { session?.email }
+
+    @ObservationIgnored private var editCount = 0
+    @ObservationIgnored private var syncRunning = false
+    @ObservationIgnored private var syncAgain = false
+
+    /// A couple's change: saved on the phone, then sent to the database.
+    private func coupleChange(_ edit: (inout AppData) -> Void) {
+        change { data in
+            edit(&data)
+            if data.remoteWeddingID != nil { data.needsUpload = true }
+        }
+        Task { await sync() }
+    }
+
+    func createAccount(email: String, password: String) async throws {
+        setSession(try await Auth.signUp(email: email, password: password))
+    }
+
+    /// Signs in and loads the couple's wedding. Returns false when the account has no
+    /// wedding yet, so onboarding can go on to set one up.
+    func signIn(email: String, password: String) async throws -> Bool {
+        let session = try await Auth.signIn(email: email, password: password)
+        setSession(session)
+        guard let weddingID = try await Sync.findWedding(as: REST(session: session)) else { return false }
+        var fresh = SampleData.empty(
+            wedding: Wedding(coupleNames: "", date: Date(), venue: "", hotelInfo: "", parkingInfo: ""), account: nil)
+        fresh.remoteWeddingID = weddingID
+        let downloaded = try await Sync.download(into: fresh, weddingID: weddingID, as: REST(session: session))
+        change { $0 = downloaded }
+        removeUnusedPhotos()
+        lastSynced = Date()
+        switchRole(to: .couple)
+        return true
+    }
+
+    /// Signs in without loading the account's wedding, for putting this phone's wedding online.
+    func signInKeepingWedding(email: String, password: String) async throws {
+        setSession(try await Auth.signIn(email: email, password: password))
+    }
+
+    /// Puts a wedding that so far lived only on this phone into the signed-in couple's account,
+    /// and gives every guest a personal website link.
+    func moveWeddingOnline() {
+        guard session != nil, data.remoteWeddingID == nil else { return }
+        coupleChange { data in
+            data.remoteWeddingID = UUID()
+            data.isDemo = false
+            for index in data.guests.indices where data.guests[index].inviteCode == nil {
+                data.guests[index].inviteCode = Supabase.makeInviteCode()
+            }
+        }
+    }
+
+    /// Signs out and takes the wedding off this phone (it stays safe in the database).
+    func signOut() {
+        change { $0 = SampleData.make() }
+        removeUnusedPhotos()
+        signOutOfDatabase()
+        switchRole(to: nil)
+    }
+
+    private func signOutOfDatabase() {
+        setSession(nil)
+        syncState = .idle
+        lastSynced = nil
+    }
+
+    private func setSession(_ new: Session?) {
+        session = new
+        SessionStore.save(new)
+    }
+
+    /// Uploads the couple's changes, then downloads guests' RSVPs and questions.
+    /// Safe to call any time; it does nothing for the demo or a phone-only wedding.
+    func sync() async {
+        guard let weddingID = data.remoteWeddingID, var session else { return }
+        if syncRunning { syncAgain = true; return }
+        syncRunning = true
+        syncState = .syncing
+        defer { syncRunning = false }
+        do {
+            if session.expiresAt < Date().addingTimeInterval(60) {
+                session = try await Auth.refresh(session)
+                setSession(session)
+            }
+            let db = REST(session: session)
+            let snapshot = data
+            let startCount = editCount
+            try await Sync.delete(events: snapshot.deletedEventIDs ?? [], guests: snapshot.deletedGuestIDs ?? [], as: db)
+            if snapshot.needsUpload == true {
+                try await Sync.upload(snapshot, weddingID: weddingID, as: db)
+            }
+            let downloaded = try await Sync.download(into: snapshot, weddingID: weddingID, as: db)
+            // Only take the download if nothing changed on the phone meanwhile; otherwise sync again.
+            if editCount == startCount {
+                change { data in
+                    data = downloaded
+                    data.needsUpload = false
+                    data.deletedEventIDs = nil
+                    data.deletedGuestIDs = nil
+                }
+                removeUnusedPhotos()
+            } else {
+                syncAgain = true
+            }
+            syncState = .idle
+            lastSynced = Date()
+        } catch SupabaseError.notSignedIn {
+            setSession(nil)
+            syncState = .failed(SupabaseError.notSignedIn.errorDescription!)
+        } catch {
+            syncState = .failed(error.localizedDescription)
+        }
+        if syncAgain {
+            syncAgain = false
+            syncRunning = false
+            await sync()
+        }
     }
 }
