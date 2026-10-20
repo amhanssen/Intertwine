@@ -108,7 +108,8 @@ struct RSVPSheet: View {
                     .foregroundStyle(Palette.textSecondary)
                     .multilineTextAlignment(.center)
                 EventCard(title: event.name, date: Format.when(event), location: Format.venue(event),
-                          badge: attending ? .attending : .declined, trailing: event.dressCode)
+                          badge: attending ? .attending : .declined, trailing: event.dressCode,
+                          photo: event.coverPhoto)
                 if attending {
                     RowGroup {
                         Button { addingToCalendar = true } label: {

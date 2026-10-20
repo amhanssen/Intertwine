@@ -14,6 +14,20 @@ struct Wedding: Codable, Hashable {
     var venue: String
     var hotelInfo: String
     var parkingInfo: String
+    /// Built-in photo of the demo couple (an image in Assets.xcassets/Brand).
+    var couplePhoto: String? = nil
+    /// Photo of the two of them that the couple picked, saved by `PhotoStore`. Shown instead of
+    /// `couplePhoto`.
+    var couplePhotoFileName: String? = nil
+    /// Rough guest count from onboarding, for registry price suggestions.
+    var expectedGuests: Int? = nil
+}
+
+/// Who set up the wedding (Figma: O3 · Create account). Stays on the phone until accounts exist.
+struct CoupleAccount: Codable, Hashable {
+    var name: String
+    var partnerName: String
+    var email: String
 }
 
 struct WeddingEvent: Identifiable, Codable, Hashable {
@@ -31,6 +45,11 @@ struct WeddingEvent: Identifiable, Codable, Hashable {
     var rsvpRequired: Bool = true
     var rsvpDeadline: Date? = nil
     var status: EventStatus = .draft
+    /// Cover photo the couple picked, saved by `PhotoStore`.
+    var photoFileName: String? = nil
+    /// Built-in photo for the demo events (an image in Assets.xcassets/Brand), shown until
+    /// the couple picks their own.
+    var samplePhoto: String? = nil
 
     /// Everything a guest needs before the event can be published.
     var missingDetails: [String] {
@@ -107,6 +126,10 @@ struct AppData: Codable {
     var registry: [RegistryItem]
     /// The guest whose view the app shows in guest mode (demo: Rosa).
     var currentGuestID: UUID
+    var account: CoupleAccount? = nil
+    /// False once a couple sets up their own wedding. Nil in data saved before onboarding existed,
+    /// which was always the demo.
+    var isDemo: Bool? = nil
 }
 
 extension Calendar {

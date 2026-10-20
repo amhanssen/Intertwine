@@ -4,6 +4,8 @@ import SwiftUI
 struct ProfileMenu: View {
     @Environment(AppStore.self) private var store
     let initials: String
+    /// Shown in place of the initials when set.
+    var photo: Image? = nil
     @State private var confirmReset = false
 
     var body: some View {
@@ -14,13 +16,24 @@ struct ProfileMenu: View {
                 Button("Switch to couple view", systemImage: "heart") { store.switchRole(to: .couple) }
             }
             Button("Back to start", systemImage: "arrow.uturn.backward") { store.switchRole(to: nil) }
-            Button("Reset demo data", systemImage: "arrow.counterclockwise", role: .destructive) { confirmReset = true }
+            if store.isDemo {
+                Button("Reset demo data", systemImage: "arrow.counterclockwise", role: .destructive) { confirmReset = true }
+            }
         } label: {
-            Text(initials)
-                .font(Typo.footnote.weight(.semibold))
-                .foregroundStyle(Palette.textSecondary)
-                .frame(width: 44, height: 44)
-                .background(Palette.bgAccentSubtle, in: Circle())
+            if let photo {
+                photo
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 44, height: 44)
+                    .clipShape(Circle())
+                    .overlay { Circle().strokeBorder(Palette.borderSubtle, lineWidth: 2) }
+            } else {
+                Text(initials)
+                    .font(Typo.footnote.weight(.semibold))
+                    .foregroundStyle(Palette.textSecondary)
+                    .frame(width: 44, height: 44)
+                    .background(Palette.bgAccentSubtle, in: Circle())
+            }
         }
         .accessibilityLabel("Profile and settings")
         .confirmationDialog("Reset the demo?", isPresented: $confirmReset, titleVisibility: .visible) {
@@ -37,7 +50,7 @@ struct EventHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.md) {
-            CoverPlaceholder(height: 150)
+            CoverPlaceholder(photo: event.coverPhoto, height: 150)
             VStack(alignment: .leading, spacing: Space.xxs) {
                 Text(event.name)
                     .font(Typo.title1)

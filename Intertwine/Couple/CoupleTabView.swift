@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 enum CoupleTab: Hashable {
@@ -68,14 +69,27 @@ struct CoupleHomeView: View {
     private var header: some View {
         HStack(alignment: .center, spacing: Space.sm) {
             ScreenHeader(title: store.wedding.coupleNames,
-                         eyebrow: "\(Format.dayLong(store.wedding.date)) · \(store.wedding.venue)")
-            ProfileMenu(initials: "M&R")
+                         eyebrow: ([Format.dayLong(store.wedding.date), store.wedding.venue]
+                                   .filter { !$0.isEmpty }.joined(separator: " · ")))
+            ProfileMenu(initials: store.coupleInitials, photo: store.wedding.photo)
         }
     }
 
     private var atAGlance: some View {
         HStack(spacing: Space.sm) {
-            StatTile(value: "\(store.daysUntilWedding)", label: "days until the wedding", large: true)
+            Group {
+                if let photo = store.wedding.photo {
+                    CountdownTile(days: store.daysUntilWedding, photo: photo)
+                        .contextMenu {
+                            Button("Remove photo", systemImage: "trash", role: .destructive) {
+                                store.setCouplePhoto(nil)
+                            }
+                        }
+                } else {
+                    StatTile(value: "\(store.daysUntilWedding)", label: "days until “I do”", large: true)
+                }
+            }
+            .overlay(alignment: .topTrailing) { CouplePhotoButton(hasPhoto: store.wedding.photo != nil) }
             VStack(spacing: Space.sm) {
                 StatTile(value: "\(store.totalInvitedPeople)", label: "guests invited")
                 StatTile(value: "\(store.totalReplies)", label: "RSVPs received")
@@ -90,7 +104,13 @@ struct CoupleHomeView: View {
             RowGroup {
                 let drafts = store.draftEvents
                 let questions = store.unansweredQuestions
-                if drafts.isEmpty && questions.isEmpty {
+                if store.data.events.isEmpty {
+                    Button { editing = WeddingEvent() } label: {
+                        ListRow(title: "Add your first event",
+                                subtitle: "Start with the Welcome Party or the Wedding Day")
+                    }
+                    .buttonStyle(.plain)
+                } else if drafts.isEmpty && questions.isEmpty {
                     ListRow(title: "You’re all caught up", subtitle: "Nothing needs you right now", showsChevron: false)
                 }
                 ForEach(Array(drafts.enumerated()), id: \.element.id) { index, event in
@@ -119,7 +139,38 @@ struct CoupleHomeView: View {
         let counts = store.rsvpCounts(for: event)
         return EventCard(title: event.name, date: Format.when(event), location: Format.venue(event),
                          badge: .published,
-                         trailing: "\(counts.attending) attending · \(counts.pending) pending")
+                         trailing: "\(counts.attending) attending · \(counts.pending) pending",
+                         photo: event.coverPhoto)
+    }
+}
+
+/// Small button on the countdown tile for adding or changing the photo of the couple.
+/// Long-press the tile to remove it.
+private struct CouplePhotoButton: View {
+    @Environment(AppStore.self) private var store
+    let hasPhoto: Bool
+    @State private var picked: PhotosPickerItem?
+
+    var body: some View {
+        PhotosPicker(selection: $picked, matching: .images) {
+            Image(systemName: hasPhoto ? "photo" : "photo.badge.plus")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Palette.iconPrimary)
+                .frame(width: 36, height: 36)
+                .background(Palette.bgSurface.opacity(0.9), in: Circle())
+        }
+        .padding(Space.xs)
+        .accessibilityLabel(hasPhoto ? "Change photo of you two" : "Add a photo of you two")
+        .onChange(of: picked) { _, item in
+            guard let item else { return }
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self),
+                   let name = PhotoStore.save(data) {
+                    store.setCouplePhoto(name)
+                }
+                picked = nil
+            }
+        }
     }
 }
 
@@ -150,7 +201,7 @@ struct EventsView: View {
                                     EventCard(title: event.name, date: Format.when(event),
                                               location: Format.venue(event),
                                               badge: event.isComplete ? .draft : .needsInfo,
-                                              trailing: "RSVPs open when published")
+                                              trailing: "RSVPs open when published", photo: event.coverPhoto)
                                 }
                                 .buttonStyle(.plain)
                                 .contextMenu { deleteButton(event) }
@@ -170,7 +221,8 @@ struct EventsView: View {
                             NavigationLink(value: event.id) {
                                 EventCard(title: event.name, date: Format.when(event),
                                           location: Format.venue(event), badge: .published,
-                                          trailing: "\(counts.attending) attending · \(counts.pending) pending")
+                                          trailing: "\(counts.attending) attending · \(counts.pending) pending",
+                                          photo: event.coverPhoto)
                             }
                             .buttonStyle(.plain)
                             .contextMenu { deleteButton(event) }

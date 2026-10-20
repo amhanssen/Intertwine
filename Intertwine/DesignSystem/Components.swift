@@ -288,11 +288,12 @@ struct EventCard: View {
     let location: String
     let badge: BadgeKind
     let trailing: String
+    var photo: Image? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
             HStack(alignment: .top, spacing: Space.sm) {
-                CoverPlaceholder(height: 64, cornerRadius: Radius.md)
+                CoverPlaceholder(photo: photo, height: 64, cornerRadius: Radius.md)
                     .frame(width: 64)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
@@ -328,8 +329,9 @@ struct EventCard: View {
     }
 }
 
-/// Stand-in for event photos until photo upload is added.
+/// Event photo (usually `WeddingEvent.coverPhoto`), or a stand-in when there isn't one.
 struct CoverPlaceholder: View {
+    var photo: Image? = nil
     var height: CGFloat = 150
     var cornerRadius: CGFloat = Radius.lg
 
@@ -338,10 +340,17 @@ struct CoverPlaceholder: View {
             .fill(Palette.bgAccentSubtle)
             .frame(height: height)
             .overlay {
-                Image(systemName: "photo")
-                    .font(.system(size: height > 100 ? 28 : 18))
-                    .foregroundStyle(Palette.iconInactive)
+                if let photo {
+                    photo
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    Image(systemName: "photo")
+                        .font(.system(size: height > 100 ? 28 : 18))
+                        .foregroundStyle(Palette.iconInactive)
+                }
             }
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .accessibilityHidden(true)
     }
 }

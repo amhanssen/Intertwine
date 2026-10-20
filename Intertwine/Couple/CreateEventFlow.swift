@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 /// The 5-step create-event flow from the couple's happy path:
@@ -11,6 +12,8 @@ struct CreateEventFlow: View {
     @State private var step = 1
     @State private var showErrors = false
     @State private var didPublish = false
+    @State private var pickedPhoto: PhotosPickerItem?
+    @State private var loadingPhoto = false
     private let wasPublished: Bool
     private let isNew: Bool
 
@@ -110,6 +113,59 @@ struct CreateEventFlow: View {
                          error: showErrors && trimmed(event.name).isEmpty ? "Add a name so guests know what this event is" : nil)
             LabeledField(label: "Welcome message (optional)", text: $event.welcomeMessage,
                          placeholder: "Join us for drinks before the big day.", multiline: true)
+            coverPhotoField
+        }
+    }
+
+    /// Figma: O5.1 · Event basics "Cover photo". The picker runs outside the app,
+    /// so it needs no photo library permission.
+    private var coverPhotoField: some View {
+        VStack(alignment: .leading, spacing: Space.xs) {
+            Text("Cover photo (optional)")
+                .font(Typo.footnote)
+                .foregroundStyle(Palette.textSecondary)
+            if let photo = event.coverPhoto {
+                CoverPlaceholder(photo: photo, height: 150)
+                HStack(spacing: Space.md) {
+                    PhotosPicker(selection: $pickedPhoto, matching: .images) {
+                        Label("Change photo", systemImage: "photo")
+                    }
+                    Button("Remove", role: .destructive) {
+                        event.photoFileName = nil
+                        event.samplePhoto = nil
+                    }
+                }
+                .font(Typo.subheadline.weight(.semibold))
+            } else {
+                PhotosPicker(selection: $pickedPhoto, matching: .images) {
+                    Label("Add photo", systemImage: "plus")
+                        .font(Typo.headline)
+                        .foregroundStyle(Palette.textSecondary)
+                        .frame(maxWidth: .infinity, minHeight: 96)
+                        .background(Palette.bgAccentSubtle,
+                                    in: RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
+                                .strokeBorder(Palette.borderDefault, style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
+                        }
+                }
+            }
+            if loadingPhoto {
+                ProgressView("Adding photo…")
+                    .font(Typo.footnote)
+            }
+        }
+        .onChange(of: pickedPhoto) { _, item in
+            guard let item else { return }
+            loadingPhoto = true
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self),
+                   let name = PhotoStore.save(data) {
+                    event.photoFileName = name
+                }
+                loadingPhoto = false
+                pickedPhoto = nil
+            }
         }
     }
 
@@ -291,7 +347,8 @@ struct CreateEventFlow: View {
                     .foregroundStyle(Palette.textSecondary)
                     .multilineTextAlignment(.center)
                 EventCard(title: event.name, date: Format.when(event), location: Format.venue(event),
-                          badge: .published, trailing: event.rsvpRequired ? "RSVPs are open" : "No RSVP needed")
+                          badge: .published, trailing: event.rsvpRequired ? "RSVPs are open" : "No RSVP needed",
+                          photo: event.coverPhoto)
             }
             .screenStyle()
         }

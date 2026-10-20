@@ -47,6 +47,11 @@ enum SampleData {
             day: date(2027, 9, 26), venue: "Seaport Hotel",
             dressCode: "Black tie optional", status: .draft)
 
+        var events = [engagement, shower, welcome, rehearsal, weddingDay]
+        for index in events.indices {
+            events[index].samplePhoto = Brand.photo(for: events[index].name)
+        }
+
         var rsvps: [RSVP] = []
         for (index, guest) in guests.enumerated() where guest.id != rosa.id {
             rsvps.append(RSVP(eventID: engagement.id, guestID: guest.id, attending: index % 5 != 0,
@@ -64,8 +69,9 @@ enum SampleData {
                 date: date(2027, 9, 26),
                 venue: "Seaport Hotel",
                 hotelInfo: "We have a room block at the Seaport Hotel until Aug 25. Mention “Mia & Ryan” when you book.",
-                parkingInfo: "Valet parking at the main entrance, or the Seaport garage across the street."),
-            events: [engagement, shower, welcome, rehearsal, weddingDay],
+                parkingInfo: "Valet parking at the main entrance, or the Seaport garage across the street.",
+                couplePhoto: Brand.couplePhoto),
+            events: events,
             guests: guests,
             rsvps: rsvps,
             questions: [
@@ -82,7 +88,14 @@ enum SampleData {
                 RegistryItem(name: "Honeymoon fund", price: 25),
                 RegistryItem(name: "Stand mixer", price: 380),
             ],
-            currentGuestID: rosa.id)
+            currentGuestID: rosa.id,
+            isDemo: true)
+    }
+
+    /// A couple's own wedding from onboarding: no events, guests or gifts yet.
+    static func empty(wedding: Wedding, account: CoupleAccount?) -> AppData {
+        AppData(wedding: wedding, events: [], guests: [], rsvps: [], questions: [], updates: [],
+                registry: [], currentGuestID: UUID(), account: account, isDemo: false)
     }
 
     private static func date(_ year: Int, _ month: Int, _ day: Int) -> Date {

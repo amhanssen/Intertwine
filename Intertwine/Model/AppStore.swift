@@ -23,12 +23,22 @@ final class AppStore {
         let url = fileURL ?? Self.defaultFileURL
         self.fileURL = url
         if let saved = try? Data(contentsOf: url),
-           let decoded = try? JSONDecoder().decode(AppData.self, from: saved) {
+           var decoded = try? JSONDecoder().decode(AppData.self, from: saved) {
+            if decoded.isDemo != false { Self.addSamplePhotos(to: &decoded) }
             data = decoded
         } else {
             data = SampleData.make()
         }
         role = UserDefaults.standard.string(forKey: Self.roleKey).flatMap(Role.init(rawValue:))
+    }
+
+    /// Demo data saved by builds before the sample photos existed doesn't name them; fill them in.
+    private static func addSamplePhotos(to data: inout AppData) {
+        if data.wedding.couplePhoto == nil { data.wedding.couplePhoto = Brand.couplePhoto }
+        for index in data.events.indices
+        where data.events[index].samplePhoto == nil && data.events[index].photoFileName == nil {
+            data.events[index].samplePhoto = Brand.photo(for: data.events[index].name)
+        }
     }
 
     private static var defaultFileURL: URL {
@@ -52,7 +62,20 @@ final class AppStore {
     var wedding: Wedding { data.wedding }
 
     var currentGuest: Guest {
-        data.guests.first { $0.id == data.currentGuestID } ?? data.guests[0]
+        data.guests.first { $0.id == data.currentGuestID }
+            ?? data.guests.first
+            // A couple's own wedding has no demo guest; the guest view is then a preview.
+            ?? Guest(id: data.currentGuestID, name: "Guest")
+    }
+
+    var isDemo: Bool { data.isDemo != false }
+
+    /// "Mia & Ryan" → "M&R".
+    var coupleInitials: String {
+        data.wedding.coupleNames
+            .components(separatedBy: "&")
+            .compactMap { $0.trimmingCharacters(in: .whitespaces).first.map(String.init) }
+            .joined(separator: "&")
     }
 
     func event(_ id: UUID) -> WeddingEvent? {
@@ -154,6 +177,7 @@ final class AppStore {
                 data.events.append(event)
             }
         }
+        removeUnusedPhotos()
     }
 
     func deleteEvent(_ id: UUID) {
@@ -161,6 +185,22 @@ final class AppStore {
             data.events.removeAll { $0.id == id }
             data.rsvps.removeAll { $0.eventID == id }
         }
+        removeUnusedPhotos()
+    }
+
+    private func removeUnusedPhotos() {
+        var used = Set(data.events.compactMap(\.photoFileName))
+        if let couple = data.wedding.couplePhotoFileName { used.insert(couple) }
+        PhotoStore.removeUnused(keeping: used)
+    }
+
+    /// Sets (or with nil, removes) the photo of the couple on their Home.
+    func setCouplePhoto(_ fileName: String?) {
+        change { data in
+            data.wedding.couplePhotoFileName = fileName
+            if fileName == nil { data.wedding.couplePhoto = nil }
+        }
+        removeUnusedPhotos()
     }
 
     func addGuest(named name: String, partySize: Int) {
@@ -206,9 +246,39 @@ final class AppStore {
         change { $0.questions.append(question) }
     }
 
+    // MARK: - Onboarding
+
+    /// Replaces whatever is on the phone with the couple's own, empty wedding.
+    func setUpWedding(_ wedding: Wedding, account: CoupleAccount?) {
+        change { $0 = SampleData.empty(wedding: wedding, account: account) }
+        removeUnusedPhotos()
+    }
+
+    func updateWedding(_ wedding: Wedding) {
+        change { $0.wedding = wedding }
+    }
+
+    func addGuests(named names: [String]) {
+        let existing = Set(data.guests.map(\.name))
+        let new = names
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && !existing.contains($0) }
+        guard !new.isEmpty else { return }
+        change { data in
+            data.guests.append(contentsOf: new.map { Guest(name: $0) })
+        }
+    }
+
     // MARK: - Demo
 
     func resetDemo() {
         change { $0 = SampleData.make() }
+        removeUnusedPhotos()
+    }
+
+    /// Loads Mia & Ryan's sample wedding and opens one side of it.
+    func startDemo(as role: Role) {
+        resetDemo()
+        switchRole(to: role)
     }
 }

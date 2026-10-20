@@ -106,7 +106,8 @@ struct GuestHomeView: View {
                             SectionTitle("Your next event")
                             NavigationLink(value: next.id) {
                                 EventCard(title: next.name, date: Format.when(next), location: Format.venue(next),
-                                          badge: store.guestBadge(for: next), trailing: next.dressCode)
+                                          badge: store.guestBadge(for: next), trailing: next.dressCode,
+                                          photo: next.coverPhoto)
                             }
                             .buttonStyle(.plain)
                         }
@@ -171,7 +172,7 @@ struct ScheduleView: View {
                                 NavigationLink(value: event.id) {
                                     EventCard(title: event.name, date: Format.timeRange(event) ?? "Time to be announced",
                                               location: Format.venue(event), badge: store.guestBadge(for: event),
-                                              trailing: event.dressCode)
+                                              trailing: event.dressCode, photo: event.coverPhoto)
                                 }
                                 .buttonStyle(.plain)
                             }
