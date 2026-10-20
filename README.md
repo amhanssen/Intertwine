@@ -71,4 +71,5 @@ Intertwine/
   Guest/          Guest tabs, RSVP, what to wear, details
 design-tokens.json
 scripts/generate_colors.py
+guest-site/      The guest side as a website (see guest-site/README.md)
 ```
