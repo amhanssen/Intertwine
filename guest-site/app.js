@@ -73,7 +73,7 @@ function eventCard(event, { date = when(event) } = {}) {
   return `
     <a class="card event-card" href="#/event/${event.id}">
       <div class="top">
-        <img class="thumb" src="${event.photo}" alt="" loading="lazy">
+        ${event.photo ? `<img class="thumb" src="${esc(event.photo)}" alt="" loading="lazy">` : '<span class="thumb" aria-hidden="true"></span>'}
         <div class="stack" style="gap:2px">
           <span class="title3">${esc(event.name)}</span>
           <span class="subheadline secondary">${date}</span>
@@ -171,7 +171,7 @@ const pages = {
     const reply = data.rsvp(id);
     return `
       ${back("#/schedule", "Schedule")}
-      <img class="cover" src="${event.photo}" alt="">
+      ${event.photo ? `<img class="cover" src="${esc(event.photo)}" alt="">` : ""}
       <header class="stack">
         <h1 class="title1">${esc(event.name)}</h1>
         <span class="headline secondary">${when(event)}</span>
@@ -302,7 +302,7 @@ const pages = {
         ${row({ href: "#/registry", title: "Registry", subtitle: `Browse ${esc(couple())}’s gift list`, iconPath: icons.gift })}
         ${row({ href: "#/ask", title: `Ask ${esc(couple())}`, subtitle: "Send the couple a question", iconPath: icons.chat })}
       </div>
-      <p class="footnote tertiary center">This is a sample wedding. <button class="link-button footnote" id="reset" style="display:inline;width:auto;padding:0">Reset sample replies</button></p>`;
+      ${data.isDemo() ? `<p class="footnote tertiary center">This is a sample wedding everyone can try. <button class="link-button footnote" id="reset" style="display:inline;width:auto;padding:0">Start the demo over</button></p>` : ""}`;
   },
 
   // GD2 · Registry
@@ -416,24 +416,42 @@ function render() {
   }
 }
 
-// Form and button handling, in one place so pages stay plain HTML.
-main.addEventListener("submit", (e) => {
-  e.preventDefault();
-  const form = new FormData(e.target);
-  if (e.target.id === "rsvp-form") {
-    const id = location.hash.split("/")[2];
-    data.sendRSVP(id, {
-      attending: form.get("attending") === "yes",
-      partyCount: Number(form.get("party") ?? 1),
-      note: String(form.get("note") ?? "").trim(),
-    });
-    location.hash = `#/sent/${id}`;
+/** Disables a form's button and shows progress while something is saved. */
+async function busy(form, label, work) {
+  const button = form.querySelector("button[type=submit]");
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = label;
+  try {
+    await work();
+    return true;
+  } catch {
+    button.disabled = false;
+    button.textContent = original;
+    form.insertAdjacentHTML("beforeend",
+      '<p class="panel warning subheadline" role="alert">That didn’t go through. Check your connection and try again.</p>');
+    return false;
   }
-  if (e.target.id === "ask-form") {
-    const text = String(form.get("question") ?? "").trim();
+}
+
+// Form and button handling, in one place so pages stay plain HTML.
+main.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const fields = new FormData(form);
+  if (form.id === "rsvp-form") {
+    const id = location.hash.split("/")[2];
+    const sent = await busy(form, "Sending…", () => data.sendRSVP(id, {
+      attending: fields.get("attending") === "yes",
+      partyCount: Number(fields.get("party") ?? 1),
+      note: String(fields.get("note") ?? "").trim(),
+    }));
+    if (sent) location.hash = `#/sent/${id}`;
+  }
+  if (form.id === "ask-form") {
+    const text = String(fields.get("question") ?? "").trim();
     if (!text) return;
-    data.ask(text, form.get("about"));
-    render();
+    if (await busy(form, "Sending…", () => data.ask(text, fields.get("about")))) render();
   }
 });
 
@@ -444,13 +462,39 @@ main.addEventListener("change", (e) => {
   if (e.target.dataset.href) location.hash = e.target.dataset.href;
 });
 
-main.addEventListener("click", (e) => {
+main.addEventListener("click", async (e) => {
   if (e.target.id === "reset") {
-    data.reset();
+    e.target.disabled = true;
+    await data.resetDemo();
     location.hash = "#/home";
     render();
   }
 });
 
-window.addEventListener("hashchange", render);
-render();
+// Load this guest's wedding, then show the page.
+async function start() {
+  main.innerHTML = '<p class="secondary center" role="status">Loading…</p>';
+  try {
+    if (!(await data.load())) {
+      main.innerHTML = `
+        <span class="mono hero-mono" aria-hidden="true"></span>
+        <header class="stack center">
+          <h1 class="title1">We couldn’t find your invite</h1>
+          <p class="secondary">Check that you opened the whole link from the couple, or ask them to send it again.</p>
+        </header>`;
+      return;
+    }
+  } catch {
+    main.innerHTML = `
+      <header class="stack center">
+        <h1 class="title1">Something went wrong</h1>
+        <p class="secondary">We couldn’t load the wedding. Check your connection and try again.</p>
+      </header>
+      <button class="button primary" onclick="location.reload()">Try again</button>`;
+    return;
+  }
+  window.addEventListener("hashchange", render);
+  render();
+}
+
+start();
