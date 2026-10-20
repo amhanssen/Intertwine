@@ -11,7 +11,7 @@ struct GuestsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Space.xl) {
                     ScreenHeader(title: "Guests",
-                                 subtitle: "\(store.data.guests.count) invitations · \(store.totalInvitedPeople) people")
+                                 subtitle: "\(store.data.guests.count) \(store.data.guests.count == 1 ? "invitation" : "invitations") · \(store.totalInvitedPeople) \(store.totalInvitedPeople == 1 ? "person" : "people")")
 
                     if !store.unansweredQuestions.isEmpty {
                         VStack(alignment: .leading, spacing: Space.xs) {
@@ -52,7 +52,7 @@ struct GuestsView: View {
                             .fixedSize()
                         }
                         if store.isSyncing && !store.data.guests.isEmpty {
-                            Text("Tap \(Image(systemName: "square.and.arrow.up")) to send a guest their personal link to the wedding website.")
+                            Text("Tap \(Image(systemName: "square.and.arrow.up")) to send or copy a guest’s personal link to the wedding website.")
                                 .font(Typo.footnote)
                                 .foregroundStyle(Palette.textTertiary)
                         }
@@ -64,15 +64,8 @@ struct GuestsView: View {
                                             subtitle: guest.partySize == 1 ? "Invitation for 1" : "Invitation for \(guest.partySize)",
                                             showsChevron: false)
                                     if store.isSyncing, let link = guest.inviteLink {
-                                        ShareLink(item: link,
-                                                  message: Text("Here’s your invite to \(store.wedding.coupleNames)’s wedding. RSVP and see every event here:")) {
-                                            Image(systemName: "square.and.arrow.up")
-                                                .font(.system(size: 17, weight: .medium))
-                                                .foregroundStyle(Palette.iconPrimary)
-                                                .frame(width: 44, height: 44)
-                                        }
-                                        .accessibilityLabel("Send \(guest.name) their invite link")
-                                        .padding(.trailing, Space.xs)
+                                        InviteLinkButton(guest: guest, link: link)
+                                            .padding(.trailing, Space.xs)
                                     }
                                 }
                             }
@@ -86,6 +79,39 @@ struct GuestsView: View {
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: UUID.self) { CoupleEventDetailView(eventID: $0) }
             .sheet(isPresented: $addingGuest) { AddGuestSheet() }
+        }
+    }
+}
+
+/// Sends or copies a guest's personal website link. "Copy link" is separate because the
+/// share sheet's Copy only copies the message, not the link.
+private struct InviteLinkButton: View {
+    @Environment(AppStore.self) private var store
+    let guest: Guest
+    let link: URL
+    @State private var copied = false
+
+    var body: some View {
+        Menu {
+            ShareLink(item: link,
+                      message: Text("Here’s your invite to \(store.wedding.coupleNames)’s wedding. RSVP and see every event here:")) {
+                Label("Send invite", systemImage: "square.and.arrow.up")
+            }
+            Button("Copy link", systemImage: "doc.on.doc") {
+                UIPasteboard.general.url = link
+                copied = true
+            }
+        } label: {
+            Image(systemName: copied ? "checkmark" : "square.and.arrow.up")
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(Palette.iconPrimary)
+                .frame(width: 44, height: 44)
+        }
+        .accessibilityLabel("Send \(guest.name) their invite link")
+        .task(id: copied) {
+            guard copied else { return }
+            try? await Task.sleep(for: .seconds(2))
+            copied = false
         }
     }
 }
