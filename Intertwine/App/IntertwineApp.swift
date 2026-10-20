@@ -4,6 +4,7 @@ import SwiftUI
 struct IntertwineApp: App {
     @State private var store = AppStore()
     @Environment(\.scenePhase) private var scenePhase
+    @State private var autoSync: Task<Void, Never>?
 
     var body: some Scene {
         WindowGroup {
@@ -11,9 +12,17 @@ struct IntertwineApp: App {
                 .environment(store)
                 .tint(Palette.bgAccent)
         }
-        // Each time the app opens, send any changes and bring in new RSVPs.
+        // While the app is open, send any changes and bring in new RSVPs, questions and
+        // gifts: right away, then every 30 seconds, so replies show up without pulling down.
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await store.sync() } }
+            autoSync?.cancel()
+            guard phase == .active else { return }
+            autoSync = Task {
+                while !Task.isCancelled {
+                    await store.sync()
+                    try? await Task.sleep(for: .seconds(30))
+                }
+            }
         }
     }
 }
