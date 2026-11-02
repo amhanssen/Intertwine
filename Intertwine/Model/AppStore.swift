@@ -129,7 +129,7 @@ final class AppStore {
     }
 
     func myRSVP(for eventID: UUID) -> RSVP? {
-        rsvp(for: eventID, guestID: data.currentGuestID)
+        rsvp(for: eventID, guestID: currentGuest.id)
     }
 
     /// RSVP summary for the couple: attending people, declined guests, guests still to reply.
@@ -154,7 +154,7 @@ final class AppStore {
     }
 
     var myQuestions: [GuestQuestion] {
-        data.questions.filter { $0.guestID == data.currentGuestID }.sorted { $0.askedAt > $1.askedAt }
+        data.questions.filter { $0.guestID == currentGuest.id }.sorted { $0.askedAt > $1.askedAt }
     }
 
     func guestName(_ id: UUID) -> String {
