@@ -61,7 +61,7 @@ struct RSVPSheet: View {
                 }
                 if attending {
                     if guest.partySize > 1 {
-                        FieldBox(label: "Who’s coming?", helper: "Your invitation is for up to \(guest.partySize) people") {
+                        FieldBox(label: "Who’s coming?", helper: "Your invitation is for up to \(guest.partySize) \(Format.noun(guest.partySize, "person", "people"))") {
                             Stepper(partyCount == 1 ? "Just me" : "\(partyCount) people",
                                     value: $partyCount, in: 1...guest.partySize)
                         }

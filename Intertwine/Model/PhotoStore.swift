@@ -48,6 +48,42 @@ enum PhotoStore {
         return image
     }
 
+    // MARK: Photos picked on another phone
+
+    /// Copies of photos that live online (picked on the partner's phone). Kept in Caches, so
+    /// iOS may clear them; they're downloaded again on the next sync.
+    private static var remoteFolder: URL {
+        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        let url = base.appendingPathComponent("RemotePhotos", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    private static func remoteFile(_ address: String) -> URL {
+        // The address ends in the photo's own unique file name (see Supabase.photoURL).
+        let name = URL(string: address)?.lastPathComponent ?? UUID().uuidString
+        return remoteFolder.appendingPathComponent(name)
+    }
+
+    static func remoteImage(_ address: String) -> UIImage? {
+        if let cached = cache.object(forKey: address as NSString) { return cached }
+        guard let image = UIImage(contentsOfFile: remoteFile(address).path) else { return nil }
+        cache.setObject(image, forKey: address as NSString)
+        return image
+    }
+
+    /// Downloads any of these photos this phone doesn't have yet. Failures are skipped quietly;
+    /// the photo simply shows up after a later sync.
+    static func download(_ addresses: [String]) async {
+        for address in Set(addresses) where !FileManager.default.fileExists(atPath: remoteFile(address).path) {
+            guard let url = URL(string: address),
+                  let (data, response) = try? await URLSession.shared.data(from: url),
+                  (response as? HTTPURLResponse)?.statusCode == 200,
+                  UIImage(data: data) != nil else { continue }
+            try? data.write(to: remoteFile(address), options: .atomic)
+        }
+    }
+
     /// Deletes saved photos that no event uses any more (replaced, removed or reset).
     static func removeUnused(keeping used: Set<String>) {
         let files = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []

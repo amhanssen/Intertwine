@@ -89,13 +89,13 @@ struct CoupleHomeView: View {
                             }
                         }
                 } else {
-                    StatTile(value: "\(store.daysUntilWedding)", label: "days until “I do”", large: true)
+                    StatTile(value: "\(store.daysUntilWedding)", label: "\(Format.noun(store.daysUntilWedding, "day")) until “I do”", large: true)
                 }
             }
             .overlay(alignment: .topTrailing) { CouplePhotoButton(hasPhoto: store.wedding.photo != nil) }
             VStack(spacing: Space.sm) {
-                StatTile(value: "\(store.totalInvitedPeople)", label: "guests invited")
-                StatTile(value: "\(store.totalReplies)", label: "RSVPs received")
+                StatTile(value: "\(store.totalInvitedPeople)", label: "\(Format.noun(store.totalInvitedPeople, "guest")) invited")
+                StatTile(value: "\(store.totalReplies)", label: "\(Format.noun(store.totalReplies, "RSVP")) received")
             }
         }
         .frame(height: 176)

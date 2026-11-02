@@ -24,9 +24,10 @@ One wedding, in one place. **The couple side is an iPhone app; the guest side is
 - `Model/Supabase.swift`: sign-in (email + password, session in the Keychain) and REST calls. No packages.
 - `Model/Sync.swift`: maps app data to tables. Upload the couple's rows, then download everything (that's how RSVPs and questions from the website arrive).
 - `Model/AppStore.swift`: couple changes go through `coupleChange`, which saves on the phone and then syncs. Sync also runs when the app opens and on pull-to-refresh (Home, Guests).
-- Photos: picked photos are uploaded once to the public Storage bucket `photos` (folder = wedding id) and their address is saved in `photo_url`; the website shows them from there.
+- Photos: picked photos are uploaded once to the public Storage bucket `photos` (folder = wedding id) and their address is saved in `photo_url`; the website shows them from there. Photos picked on the other phone are downloaded during sync into Caches (`PhotoStore.download`) and shown from `remotePhotoURL`.
 - Registry: `registry_items` (a fund's `price` is its goal), `registry_gifts` (who gave what; guests add them on the website, the couple ticks thank-yous), `registry_links` (other stores). App screens in `Couple/Registry.swift` (CR1–CR4).
 - `Model/Reminders.swift`: phone reminders the day before RSVPs are due and 2 hours before each event. iOS asks permission the first time an event is published.
+- Counts in text use `Format.noun(count, "guest")` so 1 reads "1 guest".
 - Demo and "set up on this phone only" weddings never sync. A phone-only wedding can go online via the profile menu → **Share with guests online**.
 
 ## Status (as of Oct 20, 2026)
@@ -42,8 +43,7 @@ Supabase still emails a confirmation link on sign-up. She may turn off **Authent
 ## Next steps (in rough order)
 
 1. Help her test: create an account in the app → add a guest, a gift and a photo, publish an event → open the guest's link → RSVP and "I'll get this" on the website → pull down on Home / Registry and see them. Fix whatever breaks.
-2. Show photos picked on another phone in the app (`remotePhotoURL` is stored but not displayed yet).
-3. Later: push notifications, the Elido font, TestFlight for real testers (needs the $99 Apple Developer Program).
+2. Later: push notifications, the Elido font, TestFlight for real testers (needs the $99 Apple Developer Program).
 
 ## Running things
 

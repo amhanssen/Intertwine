@@ -361,7 +361,9 @@ struct CreateEventFlow: View {
     }
 
     private var publishedMessage: String {
-        let guests = "All \(store.data.guests.count) invited guests can now see it in their Schedule."
+        let count = store.data.guests.count
+        let guests = count == 1 ? "Your invited guest can now see it in their Schedule."
+            : "All \(count) invited guests can now see it in their Schedule."
         guard event.rsvpRequired, let deadline = event.rsvpDeadline else { return guests }
         return "\(guests) RSVPs close \(Format.dayShort(deadline))."
     }

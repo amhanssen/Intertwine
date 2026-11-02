@@ -21,7 +21,7 @@ struct CoupleRegistryView: View {
 
                     HStack(spacing: Space.sm) {
                         NavigationLink(value: RegistryPage.bought) {
-                            StatTile(value: "\(store.registryGifts.count)", label: "gifts listed")
+                            StatTile(value: "\(store.registryGifts.count)", label: "\(Format.noun(store.registryGifts.count, "gift")) listed")
                         }
                         NavigationLink(value: RegistryPage.bought) {
                             StatTile(value: "\(store.takenGiftCount)", label: "bought so far")
@@ -256,7 +256,7 @@ struct GiftAdvisorView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Space.xl) {
                 ScreenHeader(title: "Gift advisor",
-                             subtitle: guestCount > 0 ? "Price ranges based on your \(guestCount) guests" : "Add guests to get price ranges")
+                             subtitle: guestCount > 0 ? "Price ranges based on your \(guestCount) \(Format.noun(guestCount, "guest"))" : "Add guests to get price ranges")
                 Panel {
                     Text("Suggested mix")
                         .font(Typo.title3)
@@ -266,7 +266,9 @@ struct GiftAdvisorView: View {
                         HStack {
                             Text(band.label)
                             Spacer()
-                            Text("\(range.lowerBound)–\(range.upperBound) gifts")
+                            Text(range.lowerBound == range.upperBound
+                                 ? "\(range.lowerBound) \(Format.noun(range.lowerBound, "gift"))"
+                                 : "\(range.lowerBound)–\(range.upperBound) gifts")
                                 .foregroundStyle(Palette.textSecondary)
                         }
                         .font(Typo.body)
@@ -392,7 +394,7 @@ struct GiftsBoughtView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Space.xl) {
                 ScreenHeader(title: "Gifts bought",
-                             subtitle: "\(store.takenGiftCount) of \(store.registryGifts.count) gifts · \(Format.price(store.fundsRaised)) in cash funds")
+                             subtitle: "\(store.takenGiftCount) of \(store.registryGifts.count) \(Format.noun(store.registryGifts.count, "gift")) · \(Format.price(store.fundsRaised)) in cash funds")
                 Picker("Show", selection: $onlyDue) {
                     Text("All gifts").tag(false)
                     Text("Thank-yous to send").tag(true)

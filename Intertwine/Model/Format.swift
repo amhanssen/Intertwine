@@ -2,6 +2,11 @@ import Foundation
 
 /// Friendly date and time text, e.g. "Sat, Sep 25" and "6:00 – 8:00 PM".
 enum Format {
+    /// The word for a count: "1 guest", "2 guests". Pass the plural when adding "s" isn't enough.
+    static func noun(_ count: Int, _ one: String, _ many: String? = nil) -> String {
+        count == 1 ? one : (many ?? one + "s")
+    }
+
     static func dayShort(_ date: Date) -> String {
         date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
     }

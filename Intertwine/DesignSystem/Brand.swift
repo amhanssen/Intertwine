@@ -21,20 +21,26 @@ enum Brand {
 }
 
 extension WeddingEvent {
-    /// The photo the couple picked, or else the demo event's sample photo.
+    /// The photo the couple picked (on this phone or another), or else the demo event's sample photo.
     var coverPhoto: Image? {
         if let photoFileName, let picked = PhotoStore.image(named: photoFileName) {
             return Image(uiImage: picked)
+        }
+        if let remotePhotoURL, let online = PhotoStore.remoteImage(remotePhotoURL) {
+            return Image(uiImage: online)
         }
         return samplePhoto.map { Image($0) }
     }
 }
 
 extension Wedding {
-    /// The couple's own photo, or else the demo couple's.
+    /// The couple's own photo (from this phone or another), or else the demo couple's.
     var photo: Image? {
         if let couplePhotoFileName, let picked = PhotoStore.image(named: couplePhotoFileName) {
             return Image(uiImage: picked)
+        }
+        if let remotePhotoURL, let online = PhotoStore.remoteImage(remotePhotoURL) {
+            return Image(uiImage: online)
         }
         return couplePhoto.map { Image($0) }
     }
@@ -96,6 +102,6 @@ struct CountdownTile: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: Radius.lg, style: .continuous))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(days) days until the wedding")
+        .accessibilityLabel("\(days) \(Format.noun(days, "day")) until the wedding")
     }
 }

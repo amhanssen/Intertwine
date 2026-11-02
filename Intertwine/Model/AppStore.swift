@@ -513,6 +513,8 @@ final class AppStore {
             }
             var downloaded = try await Sync.download(into: snapshot, weddingID: weddingID, as: db)
             downloaded.changedGiftIDs = nil
+            // Fetch photos picked on the other phone first, so they appear with the new data.
+            await PhotoStore.download(([downloaded.wedding.remotePhotoURL] + downloaded.events.map(\.remotePhotoURL)).compactMap { $0 })
             downloaded.uploadedPhotos = Array(Set((snapshot.uploadedPhotos ?? []) + uploadedPhotos))
             // Only take the download if nothing changed on the phone meanwhile; otherwise sync again.
             if editCount == startCount {
