@@ -127,12 +127,14 @@ struct GuestHomeView: View {
                     }
 
                     RowGroup {
-                        Button { selectedTab = .details } label: {
-                            ListRow(title: "Registry", subtitle: "Browse \(store.wedding.coupleNames)’s gift list",
-                                    systemImage: "gift")
+                        if !store.data.registry.isEmpty {
+                            Button { selectedTab = .details } label: {
+                                ListRow(title: "Registry", subtitle: "Browse \(store.wedding.coupleNames)’s gift list",
+                                        systemImage: "gift")
+                            }
+                            .buttonStyle(.plain)
+                            RowDivider()
                         }
-                        .buttonStyle(.plain)
-                        RowDivider()
                         Button { asking = AskTarget(eventID: nil) } label: {
                             ListRow(title: "Have a question?", subtitle: "Ask \(store.wedding.coupleNames) directly",
                                     systemImage: "bubble.left")

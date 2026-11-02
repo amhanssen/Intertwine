@@ -371,32 +371,42 @@ struct DetailsView: View {
     @Environment(AppStore.self) private var store
     @State private var asking: AskTarget?
 
+    private var hasHotel: Bool { !store.wedding.hotelInfo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var hasParking: Bool { !store.wedding.parkingInfo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Space.xl) {
                     ScreenHeader(title: "Details", subtitle: "\(store.wedding.coupleNames) · \(Format.dayLong(store.wedding.date))")
 
-                    VStack(alignment: .leading, spacing: Space.xs) {
-                        SectionTitle("Travel")
-                        Panel {
-                            Label("Where to stay", systemImage: "bed.double")
-                                .font(Typo.headline)
-                                .foregroundStyle(Palette.textPrimary)
-                            Text(store.wedding.hotelInfo)
-                                .font(Typo.subheadline)
-                                .foregroundStyle(Palette.textSecondary)
-                        }
-                        Panel {
-                            Label("Parking", systemImage: "car")
-                                .font(Typo.headline)
-                                .foregroundStyle(Palette.textPrimary)
-                            Text(store.wedding.parkingInfo)
-                                .font(Typo.subheadline)
-                                .foregroundStyle(Palette.textSecondary)
+                    if hasHotel || hasParking {
+                        VStack(alignment: .leading, spacing: Space.xs) {
+                            SectionTitle("Travel")
+                            if hasHotel {
+                                Panel {
+                                    Label("Where to stay", systemImage: "bed.double")
+                                        .font(Typo.headline)
+                                        .foregroundStyle(Palette.textPrimary)
+                                    Text(store.wedding.hotelInfo)
+                                        .font(Typo.subheadline)
+                                        .foregroundStyle(Palette.textSecondary)
+                                }
+                            }
+                            if hasParking {
+                                Panel {
+                                    Label("Parking", systemImage: "car")
+                                        .font(Typo.headline)
+                                        .foregroundStyle(Palette.textPrimary)
+                                    Text(store.wedding.parkingInfo)
+                                        .font(Typo.subheadline)
+                                        .foregroundStyle(Palette.textSecondary)
+                                }
+                            }
                         }
                     }
 
+                    if !store.data.registry.isEmpty {
                     VStack(alignment: .leading, spacing: Space.xs) {
                         SectionTitle("Registry")
                         RowGroup {
@@ -414,6 +424,7 @@ struct DetailsView: View {
                                 }
                             }
                         }
+                    }
                     }
 
                     VStack(alignment: .leading, spacing: Space.xs) {
