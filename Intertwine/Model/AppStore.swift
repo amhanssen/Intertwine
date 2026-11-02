@@ -344,20 +344,46 @@ final class AppStore {
     // MARK: - Guest actions
 
     func sendRSVP(eventID: UUID, attending: Bool, partyCount: Int, note: String) {
-        let guestID = data.currentGuestID
-        let reply = RSVP(eventID: eventID, guestID: guestID, attending: attending,
+        let guest = currentGuest
+        let reply = RSVP(eventID: eventID, guestID: guest.id, attending: attending,
                          partyCount: attending ? max(1, partyCount) : 0, note: note)
         change { data in
-            data.rsvps.removeAll { $0.eventID == eventID && $0.guestID == guestID }
+            data.rsvps.removeAll { $0.eventID == eventID && $0.guestID == guest.id }
             data.rsvps.append(reply)
         }
+        sendAsGuest("guest_rsvp", GuestRSVPArguments(code: guest.inviteCode ?? "", event: eventID, attending: attending,
+                                                      party_count: reply.partyCount, note: note))
     }
 
     func ask(_ text: String, about eventID: UUID?) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let question = GuestQuestion(guestID: data.currentGuestID, eventID: eventID, text: trimmed)
-        change { $0.questions.append(question) }
+        let guest = currentGuest
+        let question = GuestQuestion(guestID: guest.id, eventID: eventID, text: trimmed)
+        // Online, the question comes back from the database on the next sync, so it isn't added twice.
+        if previewSendsForReal {
+            sendAsGuest("guest_ask", GuestAskArguments(code: guest.inviteCode ?? "", question: trimmed, event: eventID))
+        } else {
+            change { $0.questions.append(question) }
+        }
+    }
+
+    /// In the couple's guest preview of an online wedding, replies count as that guest's real
+    /// ones, just like on the website.
+    var previewSendsForReal: Bool { isSyncing && currentGuest.inviteCode != nil }
+
+    /// Sends a guest reply to the database the way the website does, then syncs so the couple's
+    /// screens show it.
+    private func sendAsGuest<T: Encodable & Sendable>(_ function: String, _ arguments: T) {
+        guard previewSendsForReal, let session else { return }
+        Task {
+            do {
+                try await REST(session: session).call(function, arguments)
+            } catch {
+                syncState = .failed(error.localizedDescription)
+            }
+            await sync()
+        }
     }
 
     // MARK: - Onboarding
@@ -544,4 +570,18 @@ final class AppStore {
             await sync()
         }
     }
+}
+
+private struct GuestRSVPArguments: Encodable, Sendable {
+    let code: String
+    let event: UUID
+    let attending: Bool
+    let party_count: Int
+    let note: String
+}
+
+private struct GuestAskArguments: Encodable, Sendable {
+    let code: String
+    let question: String
+    let event: UUID?
 }

@@ -86,6 +86,12 @@ struct RSVPSheet: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .pinnedFooter {
+            if store.previewSendsForReal {
+                Text("This counts as \(guest.name)’s real RSVP, just like on the website.")
+                    .font(Typo.footnote)
+                    .foregroundStyle(Palette.textSecondary)
+                    .frame(maxWidth: .infinity)
+            }
             Button("Send RSVP") {
                 store.sendRSVP(eventID: event.id, attending: attending, partyCount: partyCount, note: note)
                 withAnimation { sent = true }
@@ -209,7 +215,9 @@ struct AskSheet: View {
         NavigationStack {
             VStack(alignment: .leading, spacing: Space.lg) {
                 LabeledField(label: aboutLabel, text: $text, placeholder: "Is there parking at the hotel?",
-                             helper: "\(store.wedding.coupleNames) will answer here, under Details.", multiline: true)
+                             helper: store.previewSendsForReal
+                                ? "This is sent as \(store.currentGuest.name)’s real question, just like on the website."
+                                : "\(store.wedding.coupleNames) will answer here, under Details.", multiline: true)
                 Spacer()
             }
             .screenStyle()

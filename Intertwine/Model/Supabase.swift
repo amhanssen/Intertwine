@@ -193,6 +193,11 @@ struct REST {
         _ = try await request("PATCH", "\(table)?\(query)", body: try REST.encoder.encode(values), prefer: "return=minimal")
     }
 
+    /// Runs a database function, like the website's `guest_rsvp`.
+    func call<T: Encodable>(_ function: String, _ arguments: T) async throws {
+        _ = try await request("POST", "rpc/\(function)", body: try REST.encoder.encode(arguments))
+    }
+
     /// Puts a JPEG in the "photos" storage bucket, replacing one at the same path.
     func uploadPhoto(_ jpeg: Data, path: String) async throws {
         var request = URLRequest(url: URL(string: "storage/v1/object/photos/\(path)", relativeTo: Supabase.url)!)
