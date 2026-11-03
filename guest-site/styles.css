@@ -126,6 +126,12 @@ p { margin: 0; }
   font-size: 13px; font-weight: 600;
 }
 
+.step-top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); }
+.step-bar { height: 6px; }
+button.back { background: none; border: 0; padding: 0; font: inherit; font-size: 17px; cursor: pointer; }
+.info-lines { display: flex; flex-direction: column; gap: var(--space-sm); margin: 0; }
+.info-lines dd { margin: 2px 0 0; }
+.guest-preview { pointer-events: none; }
 .back {
   display: inline-flex; align-items: center; gap: var(--space-xxs);
   color: var(--text-secondary); text-decoration: none; font-size: 17px;
@@ -227,6 +233,10 @@ div.row:hover { background: none; }
 }
 .field textarea { min-height: 96px; resize: vertical; }
 .field input:focus, .field textarea:focus, .field select:focus { outline: none; border: 2px solid var(--border-focus); }
+[hidden] { display: none !important; }
+fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.field-error { font-size: 13px; color: var(--text-error); }
+.field [aria-invalid="true"] { border-color: var(--text-error); }
 .field .helper { font-size: 13px; color: var(--text-tertiary); }
 
 .segmented {

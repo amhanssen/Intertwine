@@ -54,6 +54,7 @@ const icons = {
   person: '<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.7-3.8 3.4-6 7-6s6.3 2.2 7 6"/>',
   chevron: '<path d="m9 6 6 6-6 6"/>',
   back: '<path d="m15 6-6 6 6 6"/>',
+  check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
   link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
   rings: '<circle cx="9" cy="13" r="5"/><circle cx="15" cy="13" r="5"/>',
@@ -177,6 +178,157 @@ function setupPage() {
     <button class="link-button" type="button" data-action="sign-out">Sign out</button>`;
 }
 
+// ---------- Create event steps (app: CreateEventFlow) ----------
+
+const stepNames = ["Basics", "Date & place", "Dress code & RSVP", "Guest preview", "Publish"];
+const stepTitles = ["Event basics", "Date & place", "Dress code & RSVP", "Preview your event", "Ready to publish?"];
+
+const invitedHelper = (rsvp) => rsvp ? "RSVPs open when you publish" : "Guests will see the event without an RSVP button";
+
+/** The event form as a table row (the photo is sent separately). */
+function eventFields(form) {
+  const fields = new FormData(form);
+  const rsvp = fields.get("rsvp") === "yes";
+  return {
+    type: text(fields, "type"), name: text(fields, "name"), welcome_message: text(fields, "welcome"),
+    day: optionalDate(fields, "day"), start_time: optionalDate(fields, "start"), end_time: optionalDate(fields, "end"),
+    venue: text(fields, "venue"), directions: text(fields, "directions"),
+    dress_code: text(fields, "dress"), dress_guidance: text(fields, "guidance"),
+    rsvp_required: rsvp, rsvp_deadline: rsvp ? optionalDate(fields, "deadline") : null,
+  };
+}
+
+/** The photo to preview: a newly picked one, the event's own, or the sample for its type. */
+function previewPhoto(form) {
+  const file = form.querySelector("#photo").files[0];
+  if (file) {
+    if (form.pickedFile !== file) {
+      if (form.pickedURL) URL.revokeObjectURL(form.pickedURL);
+      form.pickedFile = file;
+      form.pickedURL = URL.createObjectURL(file);
+    }
+    return form.pickedURL;
+  }
+  return form.dataset.photo || photoFor({ type: form.querySelector("#type").value });
+}
+
+function stepButtons(step, published, complete) {
+  if (step <= 3) return `
+    <button class="button primary" type="button" data-action="step" data-to="next">${step === 3 ? "Preview as guest" : "Continue"}</button>
+    ${published ? "" : '<button class="button tertiary" type="submit" value="draft">Save draft</button>'}`;
+  if (step === 4) return `
+    <button class="button primary" type="button" data-action="step" data-to="5">Looks good, continue</button>
+    <button class="button tertiary" type="button" data-action="step" data-to="1">Edit event</button>`;
+  return `
+    <button class="button primary" type="submit" value="publish" ${complete ? "" : "disabled"}>${published ? "Save changes" : "Publish event"}</button>
+    <button class="button tertiary" type="button" data-action="step" data-to="4">Back to preview</button>`;
+}
+
+/** Step 4: the event as a guest will see it (same layout as the guest website's event page). */
+function previewHTML(e, photo) {
+  return `
+    <p class="panel accent subheadline">This is exactly what guests will see. RSVP is off while you preview.</p>
+    <div class="stack-lg guest-preview">
+      ${photo ? `<img class="cover" src="${esc(photo)}" alt="">` : ""}
+      <header class="stack">
+        <h2 class="title1">${esc(e.name)}</h2>
+        <span class="headline secondary">${when(e)}</span>
+        ${e.welcome_message ? `<p>${esc(e.welcome_message)}</p>` : ""}
+      </header>
+      ${e.rsvp_required ? `
+        <section class="panel">
+          <span class="title3">${e.rsvp_deadline ? `Please reply by ${dayShort(e.rsvp_deadline)}` : "Please reply"}</span>
+          <p class="subheadline secondary">You’re invited · RSVP required</p>
+          <button class="button primary" type="button" disabled>RSVP</button>
+        </section>` : ""}
+      <section class="panel">
+        <h3 class="title3">Where</h3>
+        <p>${esc(e.venue)}</p>
+        ${e.directions ? `<p class="subheadline secondary">${esc(e.directions)}</p>` : ""}
+      </section>
+      <section class="panel">
+        <h3 class="title3">What to wear</h3>
+        <p>${esc(e.dress_code)}</p>
+        ${e.dress_guidance ? `<p class="subheadline secondary">${esc(e.dress_guidance)}</p>` : ""}
+      </section>
+    </div>`;
+}
+
+const whoCanSee = (n) => n === 0 ? "Guests you add" : n === 1 ? "Your 1 invited guest" : `All ${n} invited guests`;
+
+/** Step 5: one last look before publishing. */
+function reviewHTML(e, published) {
+  const missing = data.missing(e);
+  const rsvp = !e.rsvp_required ? "No RSVP needed"
+    : e.rsvp_deadline ? `Required · reply by ${dayShort(e.rsvp_deadline)}` : "Required";
+  const line = (label, value) => `<div><dt class="footnote secondary">${label}</dt><dd>${value}</dd></div>`;
+  return `
+    <p class="subheadline secondary">${published ? "Guests will see these changes right away."
+      : "Check the details once more. You can still edit the event after it’s live."}</p>
+    <section class="panel">
+      <h2 class="title3">${esc(e.name)}</h2>
+      <dl class="info-lines">
+        ${line("When", when(e))}
+        ${line("Where", e.venue ? esc(e.venue) : "Venue to be set")}
+        ${line("What to wear", esc(e.dress_code))}
+        ${line("RSVP", rsvp)}
+        ${line("Who can see it", whoCanSee(state.guests.length))}
+      </dl>
+    </section>
+    ${missing.length ? `<p class="panel warning subheadline">Add the ${missing.join(", ")} before publishing.</p>` : ""}`;
+}
+
+/** What's missing on a step before the couple can move on (same rules as the app). */
+function stepErrors(form, step) {
+  const e = eventFields(form);
+  const errors = {};
+  if (step === 1 && !e.name) errors.name = "Add a name so guests know what this event is";
+  if (step === 2) {
+    if (!e.day) errors.day = "Add the date of the event";
+    if (!e.start_time) errors.start = "Add a start time";
+    if (!e.venue) errors.venue = "Add where the event is";
+  }
+  return errors;
+}
+
+function markErrors(form, errors) {
+  form.querySelectorAll(".field-error").forEach((p) => p.remove());
+  form.querySelectorAll("[aria-invalid]").forEach((input) => input.removeAttribute("aria-invalid"));
+  for (const [id, message] of Object.entries(errors)) {
+    const input = form.querySelector(`#${id}`);
+    input.setAttribute("aria-invalid", "true");
+    input.closest(".field").insertAdjacentHTML("beforeend", `<p class="field-error" role="alert">${message}</p>`);
+  }
+  const first = Object.keys(errors)[0];
+  if (first) form.querySelector(`#${first}`).focus();
+  return !first;
+}
+
+function showStep(form, step) {
+  const published = form.dataset.published === "true";
+  const e = eventFields(form);
+  form.dataset.current = step;
+  form.querySelectorAll("[data-step]").forEach((el) => { el.hidden = Number(el.dataset.step) !== step; });
+  main.querySelectorAll("[data-when]").forEach((el) => { el.hidden = !el.dataset.when.split(" ").includes(String(step)); });
+  const title = main.querySelector("#step-title");
+  title.textContent = step === 5 && published ? "Save changes?" : stepTitles[step - 1];
+  document.title = `${title.textContent} · Intertwine`;
+  main.querySelector("#step-name").textContent = `Step ${step} of 5 · ${stepNames[step - 1]}`;
+  main.querySelector("#step-bar").style.width = `${step * 20}%`;
+  if (step === 4) form.querySelector("#preview").innerHTML = previewHTML(e, previewPhoto(form));
+  if (step === 5) form.querySelector("#review").innerHTML = reviewHTML(e, published);
+  form.querySelector("#step-buttons").innerHTML = stepButtons(step, published, !data.missing(e).length);
+  form.querySelector(".form-error")?.remove();
+  window.scrollTo(0, 0);
+  title.setAttribute("tabindex", "-1");
+  title.focus({ preventScroll: true });
+}
+
+function nextStep(form) {
+  const step = Number(form.dataset.current);
+  if (markErrors(form, stepErrors(form, step))) showStep(form, step + 1);
+}
+
 // ---------- Pages ----------
 
 const pages = {
@@ -290,39 +442,86 @@ const pages = {
       <button class="button tertiary danger" type="button" data-action="delete-event">Delete event</button>`;
   },
 
-  // Add or change an event (app: Create event flow, all steps on one page).
+  // Add or change an event (app: Create event flow). Five steps: Basics → Date & place →
+  // Dress code & RSVP → Guest preview → Publish. Steps are shown one at a time by showStep().
   edit(id) {
     const isNew = id === "new";
     const e = isNew ? { type: "Welcome Party", name: "", dress_code: "Cocktail attire", rsvp_required: true } : data.event(id);
     if (!e) return notFound();
+    const published = e.status === "published";
     return `
-      ${back(isNew ? "#/events" : `#/event/${e.id}`, isNew ? "Events" : e.name)}
-      ${header(isNew ? "New event" : "Edit event")}
-      <form class="stack-lg" id="event-form" data-id="${isNew ? "" : e.id}">
-        <h2 class="title3">Basics</h2>
-        ${field("type", "Type of event", `<select id="type" name="type">${options(eventTypes, e.type)}</select>`)}
-        ${field("name", "Event name", `<input id="name" name="name" value="${esc(e.name)}" placeholder="Event name" required>`)}
-        ${field("welcome", "Welcome message (optional)", `<textarea id="welcome" name="welcome" placeholder="A short note to your guests">${esc(e.welcome_message)}</textarea>`)}
-        ${field("photo", "Photo (optional)", '<input id="photo" name="photo" type="file" accept="image/*">', e.photo_url ? "This event has a photo. Pick another to replace it." : "")}
+      <div class="step-top">
+        <a class="back" href="${isNew ? "#/events" : `#/event/${e.id}`}" data-when="1">${icon(icons.back, 20)}Cancel</a>
+        <button class="back" type="button" data-action="step" data-to="back" data-when="2 3 4 5" hidden>${icon(icons.back, 20)}Back</button>
+        ${statusBadge(e)}
+      </div>
+      <header class="stack-sm">
+        <p class="footnote secondary">${isNew ? "New event" : esc(e.name)}</p>
+        <h1 class="title1" id="step-title">${stepTitles[0]}</h1>
+        <p class="footnote secondary" id="step-name">Step 1 of 5 · ${stepNames[0]}</p>
+        <div class="progress step-bar" aria-hidden="true"><span id="step-bar" style="width:20%"></span></div>
+      </header>
+      <form class="stack-lg" id="event-form" novalidate data-id="${isNew ? "" : e.id}" data-current="1"
+        data-published="${published}" data-photo="${esc(e.photo_url ?? "")}">
+        <fieldset class="stack-lg" data-step="1">
+          <p class="subheadline secondary">Start with a name and a short welcome. You’ll add the time, place and dress code next.</p>
+          ${field("type", "Event type", `<select id="type" name="type">${options(eventTypes, e.type)}</select>`)}
+          ${field("name", "Event name", `<input id="name" name="name" value="${esc(e.name)}" placeholder="e.g. Welcome Party">`)}
+          ${field("welcome", "Welcome message (optional)", `<textarea id="welcome" name="welcome" placeholder="Join us for drinks before the big day.">${esc(e.welcome_message)}</textarea>`)}
+          ${field("photo", "Cover photo (optional)", '<input id="photo" name="photo" type="file" accept="image/*">', e.photo_url ? "This event has a photo. Pick another to replace it." : "")}
+        </fieldset>
 
-        <h2 class="title3">Date & place</h2>
-        ${field("day", "Date", `<input id="day" name="day" type="date" value="${esc(e.day)}">`)}
-        <div class="two-up">
-          ${field("start", "Starts", `<input id="start" name="start" type="time" value="${esc(e.start_time?.slice(0, 5))}">`)}
-          ${field("end", "Ends (optional)", `<input id="end" name="end" type="time" value="${esc(e.end_time?.slice(0, 5))}">`)}
-        </div>
-        ${field("venue", "Venue", `<input id="venue" name="venue" value="${esc(e.venue)}" placeholder="Name of the venue">`)}
-        ${field("directions", "Directions (optional)", `<textarea id="directions" name="directions" placeholder="How to find it and where to park">${esc(e.directions)}</textarea>`)}
+        <fieldset class="stack-lg" data-step="2" hidden>
+          ${field("day", "Date", `<input id="day" name="day" type="date" value="${esc(e.day)}">`)}
+          <div class="two-up">
+            ${field("start", "Start time", `<input id="start" name="start" type="time" value="${esc(e.start_time?.slice(0, 5))}">`)}
+            ${field("end", "End time (optional)", `<input id="end" name="end" type="time" value="${esc(e.end_time?.slice(0, 5))}">`)}
+          </div>
+          ${field("venue", "Venue", `<input id="venue" name="venue" value="${esc(e.venue)}" placeholder="e.g. Seaport Hotel">`)}
+          ${field("directions", "Directions for guests (optional)", `<textarea id="directions" name="directions" placeholder="Use the main entrance and follow the signs.">${esc(e.directions)}</textarea>`, "Tell guests which door or room to look for")}
+        </fieldset>
 
-        <h2 class="title3">Dress code & RSVP</h2>
-        ${field("dress", "Dress code", `<select id="dress" name="dress">${options(dressCodes, e.dress_code)}</select>`)}
-        ${field("guidance", "Tips for guests (optional)", `<textarea id="guidance" name="guidance" placeholder="Anything guests should know about what to wear">${esc(e.dress_guidance)}</textarea>`)}
-        <label class="check"><input type="checkbox" name="rsvp" ${e.rsvp_required ? "checked" : ""}><span>Guests need to RSVP</span></label>
-        ${field("deadline", "Reply by (optional)", `<input id="deadline" name="deadline" type="date" value="${esc(e.rsvp_deadline)}">`)}
+        <fieldset class="stack-lg" data-step="3" hidden>
+          <h2 class="title3">What to wear</h2>
+          ${field("dress", "Dress code", `<select id="dress" name="dress">${options(dressCodes, e.dress_code)}</select>`)}
+          ${field("guidance", "Guidance for guests (optional)", `<textarea id="guidance" name="guidance" placeholder="Dresses or suits; comfortable shoes welcome.">${esc(e.dress_guidance)}</textarea>`)}
+          <h2 class="title3">RSVP</h2>
+          <div class="segmented" role="radiogroup" aria-label="RSVP">
+            <label><input type="radio" name="rsvp" value="yes" ${e.rsvp_required ? "checked" : ""}><span>RSVP required</span></label>
+            <label><input type="radio" name="rsvp" value="no" ${e.rsvp_required ? "" : "checked"}><span>No RSVP</span></label>
+          </div>
+          <div id="deadline-field" ${e.rsvp_required ? "" : "hidden"}>
+            ${field("deadline", "Reply by (optional)", `<input id="deadline" name="deadline" type="date" value="${esc(e.rsvp_deadline)}">`)}
+          </div>
+          <div class="field">
+            <span class="label">Who’s invited</span>
+            <p class="panel">All wedding guests</p>
+            <span class="helper" id="invited-helper">${invitedHelper(e.rsvp_required)}</span>
+          </div>
+        </fieldset>
 
-        <button class="button primary" type="submit">${isNew ? "Save event" : "Save changes"}</button>
-        ${isNew ? '<p class="footnote tertiary center">New events start as drafts. Guests see them once you publish.</p>' : ""}
+        <div class="stack-lg" data-step="4" id="preview" hidden></div>
+        <div class="stack-lg" data-step="5" id="review" hidden></div>
+        <div class="stack-sm" id="step-buttons">${stepButtons(1, published, false)}</div>
       </form>`;
+  },
+
+  // After a first publish (app: the "is live" screen at the end of Create event).
+  live(id) {
+    const e = data.event(id);
+    if (!e) return notFound();
+    const n = state.guests.length;
+    const guests = n === 0 ? "Guests you add will see it on their invite."
+      : n === 1 ? "Your invited guest can now see it on their invite."
+        : `All ${n} invited guests can now see it on their invite.`;
+    return `
+      <div class="success" aria-hidden="true">${icon(icons.check, 36)}</div>
+      <header class="stack center">
+        <h1 class="title1">${esc(e.name)} is live</h1>
+        <p class="secondary">${guests}${e.rsvp_required && e.rsvp_deadline ? ` RSVPs close ${dayShort(e.rsvp_deadline)}.` : ""}</p>
+      </header>
+      ${eventCard(e)}
+      <a class="button primary" href="#/events">Done</a>`;
   },
 
   // Guests (app: Guests tab).
@@ -555,7 +754,7 @@ function notFound() {
 
 // ---------- Routing ----------
 
-const tabs = { home: "home", questions: "home", wedding: "home", events: "events", event: "events", edit: "events",
+const tabs = { home: "home", questions: "home", wedding: "home", events: "events", event: "events", edit: "events", live: "events",
   guests: "guests", guest: "guests", registry: "registry", item: "registry" };
 
 function route() {
@@ -684,18 +883,22 @@ main.addEventListener("submit", async (e) => {
   }
 
   if (form.id === "event-form") {
+    // Enter in a text box moves to the next step instead of saving.
+    if (!e.submitter) { if (Number(form.dataset.current) <= 3) nextStep(form); return; }
+    const publishing = e.submitter.value === "publish";
+    const wasPublished = form.dataset.published === "true";
+    const row = eventFields(form);
+    if (!row.name) { showStep(form, 1); markErrors(form, stepErrors(form, 1)); return; }
+    if (publishing) row.status = "published";
     const photo = fields.get("photo");
-    const rsvp = fields.get("rsvp") === "on";
     let id = form.dataset.id;
-    if (await busy(form, "Saving…", async () => {
-      id = await data.saveEvent(id || null, {
-        type: text(fields, "type"), name: text(fields, "name"), welcome_message: text(fields, "welcome"),
-        day: optionalDate(fields, "day"), start_time: optionalDate(fields, "start"), end_time: optionalDate(fields, "end"),
-        venue: text(fields, "venue"), directions: text(fields, "directions"),
-        dress_code: text(fields, "dress"), dress_guidance: text(fields, "guidance"),
-        rsvp_required: rsvp, rsvp_deadline: rsvp ? optionalDate(fields, "deadline") : null,
-      }, photo?.size ? photo : null);
-    })) { location.hash = `#/event/${id}`; }
+    if (await busy(form, publishing && !wasPublished ? "Publishing…" : "Saving…", async () => {
+      id = await data.saveEvent(id || null, row, photo?.size ? photo : null);
+    })) {
+      if (!publishing) go(`#/event/${id}`, "Saved as a draft. Guests can’t see it until you publish.");
+      else if (wasPublished) go(`#/event/${id}`, "Changes saved. Guests see them right away.");
+      else go(`#/live/${id}`);
+    }
   }
 
   if (form.id === "guest-form") {
@@ -741,6 +944,11 @@ main.addEventListener("change", async (e) => {
     main.querySelector("#price-label").textContent = fund ? "Goal ($)" : "Price ($)";
     main.querySelector("#bought-field").hidden = fund;
   }
+  if (target.name === "rsvp") {
+    const required = target.value === "yes";
+    main.querySelector("#deadline-field").hidden = !required;
+    main.querySelector("#invited-helper").textContent = invitedHelper(required);
+  }
   if (target.name === "type") {
     // Name a new event after its type until the couple types their own name.
     const name = main.querySelector("#name");
@@ -751,6 +959,14 @@ main.addEventListener("change", async (e) => {
     try { await data.thankYou(target.dataset.id, target.checked); render({ keepScroll: true }); }
     catch (error) { target.checked = !target.checked; target.disabled = false; showError(target.closest("section"), error); }
   }
+});
+
+// In the event steps, Enter in a text box goes to the next step (not "Save draft").
+main.addEventListener("keydown", (e) => {
+  const form = e.target.form;
+  if (e.key !== "Enter" || form?.id !== "event-form" || e.target.tagName !== "INPUT") return;
+  e.preventDefault();
+  if (Number(form.dataset.current) <= 3) nextStep(form);
 });
 
 // Buttons that aren't part of a form.
@@ -780,6 +996,16 @@ main.addEventListener("click", async (e) => {
       button.textContent = "Copied!";
       setTimeout(() => { if (button.isConnected) button.innerHTML = `${icon(icons.link, 20)}Copy link`; }, 2000);
       break;
+    case "step": {
+      const form = main.querySelector("#event-form");
+      const to = button.dataset.to;
+      if (to === "next") nextStep(form);
+      else {
+        markErrors(form, {});
+        showStep(form, to === "back" ? Number(form.dataset.current) - 1 : Number(to));
+      }
+      break;
+    }
     case "publish":
     case "unpublish":
       await run(async () => {
