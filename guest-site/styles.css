@@ -157,6 +157,8 @@ p { margin: 0; }
 .row:hover { background: color-mix(in srgb, var(--bg-accent-subtle) 40%, transparent); }
 .row .icon { color: var(--text-secondary); flex: none; width: 24px; height: 24px; }
 .row .text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.row .text > * { overflow-wrap: anywhere; }
+.row > .button { flex: none; }
 .row .chevron { color: var(--icon-inactive); flex: none; }
 div.row { cursor: default; }
 div.row:hover { background: none; }
