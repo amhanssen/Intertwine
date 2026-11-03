@@ -165,6 +165,48 @@ export const data = {
     return created !== null;
   },
 
+  /** Emails a link to choose a new password. The link opens this page signed in. */
+  async forgotPassword(email) {
+    const back = new URL("couple.html", GUEST_SITE).href;
+    await auth(`recover?redirect_to=${encodeURIComponent(back)}`, { email });
+  },
+
+  /** Signs in from the password-reset link (the tokens Supabase puts after "#"). */
+  async signInFromLink(params) {
+    let response;
+    try {
+      response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${params.get("access_token")}` },
+      });
+    } catch {
+      throw new Error("You’re offline. Check your connection and try again.");
+    }
+    if (!response.ok) throw new Error("That link has expired. Ask for a new one.");
+    saveSession(sessionFrom({
+      access_token: params.get("access_token"), refresh_token: params.get("refresh_token"),
+      expires_in: Number(params.get("expires_in")) || 3600, user: await response.json(),
+    }));
+  },
+
+  async setPassword(password) {
+    let response;
+    try {
+      response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+        method: "PUT",
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${await token()}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+    } catch {
+      throw new Error("You’re offline. Check your connection and try again.");
+    }
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(json.error_code === "same_password"
+        ? "That’s your current password. Choose a new one."
+        : friendly(json.error_code, json.msg || json.message));
+    }
+  },
+
   signOut() {
     saveSession(null);
     Object.assign(state, { wedding: null, events: [], guests: [], rsvps: [], questions: [], registry: [], gifts: [], links: [] });

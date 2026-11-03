@@ -116,7 +116,29 @@ const field = (id, label, input, helper = "") => `
 const pagesSignedOut = {
   signin: () => authPage("signin"),
   signup: () => authPage("signup"),
+  forgot: () => `
+    ${back("#/signin", "Sign in")}
+    <header class="stack">
+      <h1 class="title1">Reset your password</h1>
+      <p class="secondary">Enter the email you signed up with. We’ll send you a link to choose a new password.</p>
+    </header>
+    <form class="stack-lg" id="forgot-form">
+      ${field("email", "Email", '<input id="email" name="email" type="email" autocomplete="email" placeholder="you@email.com" required>')}
+      <button class="button primary" type="submit">Send reset link</button>
+    </form>`,
 };
+
+function newPasswordPage() {
+  return `
+    <header class="stack">
+      <h1 class="title1">Choose a new password</h1>
+      <p class="secondary">For ${esc(data.email())}. Use it to sign in here and in the app.</p>
+    </header>
+    <form class="stack-lg" id="password-form">
+      ${field("password", "New password", '<input id="password" name="password" type="password" minlength="8" autocomplete="new-password" required>', "At least 8 characters.")}
+      <button class="button primary" type="submit">Save password</button>
+    </form>`;
+}
 
 function authPage(mode) {
   const signingUp = mode === "signup";
@@ -129,11 +151,12 @@ function authPage(mode) {
         : "Use the same email and password as the Intertwine app."}</p>
     </header>
     <form class="stack-lg" id="auth-form" data-mode="${mode}">
-      ${field("email", "Email", '<input id="email" name="email" type="email" autocomplete="email" required>')}
+      ${field("email", "Email", '<input id="email" name="email" type="email" autocomplete="email" placeholder="you@email.com" required>')}
       ${field("password", "Password", `<input id="password" name="password" type="password" minlength="8" autocomplete="${signingUp ? "new-password" : "current-password"}" required>`,
         signingUp ? "At least 8 characters." : "")}
       <button class="button primary" type="submit">${signingUp ? "Create account" : "Sign in"}</button>
     </form>
+    ${signingUp ? "" : '<a class="link-button" href="#/forgot">Forgot password?</a>'}
     <a class="link-button" href="${signingUp ? "#/signin" : "#/signup"}">${signingUp ? "I already have an account" : "New here? Create an account"}</a>
     <p class="footnote tertiary center">Guests don’t need an account. They open the personal link you send them.</p>`;
 }
@@ -146,9 +169,9 @@ function setupPage() {
       <p class="secondary">You can change all of this later.</p>
     </header>
     <form class="stack-lg" id="setup-form">
-      ${field("names", "Your names", '<input id="names" name="names" placeholder="Mia & Ryan" required>')}
+      ${field("names", "Your names", '<input id="names" name="names" placeholder="Partner 1 & Partner 2" required>')}
       ${field("date", "Wedding date", '<input id="date" name="date" type="date" required>')}
-      ${field("venue", "Venue (optional)", '<input id="venue" name="venue" placeholder="Seaport Hotel">')}
+      ${field("venue", "Venue (optional)", '<input id="venue" name="venue" placeholder="Name of your venue">')}
       <button class="button primary" type="submit">Continue</button>
     </form>
     <button class="link-button" type="button" data-action="sign-out">Sign out</button>`;
@@ -191,12 +214,14 @@ const pages = {
         <a class="stat" href="#/guests"><span class="number">${state.guests.length}</span><span class="subheadline secondary">${noun(state.guests.length, "guest")} invited</span></a>
         <a class="stat" href="#/events"><span class="number">${replies}</span><span class="subheadline secondary">${noun(replies, "RSVP")} received</span></a>
       </div>
+      ${upcoming ? `<section class="stack"><h2 class="title3">Your next event</h2>${nextEventCard(upcoming)}</section>` : ""}
       <section class="stack">
         <h2 class="title3">Needs your attention</h2>
         ${attention.length ? `<div class="row-group">${attention.join("")}</div>`
           : '<p class="panel subheadline secondary">You’re all caught up.</p>'}
       </section>
-      ${upcoming ? `<section class="stack"><h2 class="title3">Next event</h2>${eventCard(upcoming)}</section>` : ""}
+      ${thankYous()}
+      ${otherStores()}
       <section class="stack">
         <h2 class="title3">More</h2>
         <div class="row-group">
@@ -276,8 +301,8 @@ const pages = {
       <form class="stack-lg" id="event-form" data-id="${isNew ? "" : e.id}">
         <h2 class="title3">Basics</h2>
         ${field("type", "Type of event", `<select id="type" name="type">${options(eventTypes, e.type)}</select>`)}
-        ${field("name", "Event name", `<input id="name" name="name" value="${esc(e.name)}" placeholder="Welcome Party" required>`)}
-        ${field("welcome", "Welcome message (optional)", `<textarea id="welcome" name="welcome" placeholder="We can’t wait to celebrate with you!">${esc(e.welcome_message)}</textarea>`)}
+        ${field("name", "Event name", `<input id="name" name="name" value="${esc(e.name)}" placeholder="Event name" required>`)}
+        ${field("welcome", "Welcome message (optional)", `<textarea id="welcome" name="welcome" placeholder="A short note to your guests">${esc(e.welcome_message)}</textarea>`)}
         ${field("photo", "Photo (optional)", '<input id="photo" name="photo" type="file" accept="image/*">', e.photo_url ? "This event has a photo. Pick another to replace it." : "")}
 
         <h2 class="title3">Date & place</h2>
@@ -286,12 +311,12 @@ const pages = {
           ${field("start", "Starts", `<input id="start" name="start" type="time" value="${esc(e.start_time?.slice(0, 5))}">`)}
           ${field("end", "Ends (optional)", `<input id="end" name="end" type="time" value="${esc(e.end_time?.slice(0, 5))}">`)}
         </div>
-        ${field("venue", "Venue", `<input id="venue" name="venue" value="${esc(e.venue)}" placeholder="Harbor View Terrace">`)}
-        ${field("directions", "Directions (optional)", `<textarea id="directions" name="directions" placeholder="Park on Main Street; the entrance is by the garden.">${esc(e.directions)}</textarea>`)}
+        ${field("venue", "Venue", `<input id="venue" name="venue" value="${esc(e.venue)}" placeholder="Name of the venue">`)}
+        ${field("directions", "Directions (optional)", `<textarea id="directions" name="directions" placeholder="How to find it and where to park">${esc(e.directions)}</textarea>`)}
 
         <h2 class="title3">Dress code & RSVP</h2>
         ${field("dress", "Dress code", `<select id="dress" name="dress">${options(dressCodes, e.dress_code)}</select>`)}
-        ${field("guidance", "Tips for guests (optional)", `<textarea id="guidance" name="guidance" placeholder="It’s on the grass, so skip the stilettos.">${esc(e.dress_guidance)}</textarea>`)}
+        ${field("guidance", "Tips for guests (optional)", `<textarea id="guidance" name="guidance" placeholder="Anything guests should know about what to wear">${esc(e.dress_guidance)}</textarea>`)}
         <label class="check"><input type="checkbox" name="rsvp" ${e.rsvp_required ? "checked" : ""}><span>Guests need to RSVP</span></label>
         ${field("deadline", "Reply by (optional)", `<input id="deadline" name="deadline" type="date" value="${esc(e.rsvp_deadline)}">`)}
 
@@ -308,7 +333,7 @@ const pages = {
       <form class="panel stack-sm" id="guest-form">
         <h2 class="headline">Add a guest</h2>
         <div class="two-up wide-first">
-          ${field("guest-name", "Name", '<input id="guest-name" name="name" placeholder="Katie Smith" required>')}
+          ${field("guest-name", "Name", '<input id="guest-name" name="name" placeholder="Guest’s full name" required>')}
           ${field("party", "Party size", '<input id="party" name="party" type="number" min="1" max="20" value="1" required>', "Including plus-ones")}
         </div>
         <button class="button primary" type="submit">Add guest</button>
@@ -360,7 +385,6 @@ const pages = {
   registry() {
     const raised = state.registry.filter((i) => i.is_fund).reduce((sum, i) => sum + data.raised(i.id), 0);
     const taken = state.registry.filter(data.isTaken).length;
-    const guestName = (id) => esc(data.guest(id)?.name ?? "A guest");
     return `
       ${header("Registry", "Gifts and cash funds guests can choose from")}
       <a class="button primary" href="#/item/new">Add a gift or fund</a>
@@ -370,36 +394,7 @@ const pages = {
           href: `#/item/${i.id}`, title: esc(i.name), iconPath: i.is_fund ? icons.fund : icons.gift,
           subtitle: i.is_fund ? `${money(data.raised(i.id))} of ${money(i.price)}` : `${money(i.price)} · ${itemStatus(i)}`,
         })).join("")}</div>`
-        : '<p class="panel subheadline secondary">Add gifts and cash funds. Guests see them on your wedding website and can say “I’ll get this,” so nobody buys the same thing twice.</p>'}
-      ${state.gifts.length ? `
-        <section class="stack">
-          <h2 class="title3">From your guests</h2>
-          <p class="subheadline secondary">Tick a gift once you’ve sent the thank-you note.</p>
-          <div class="row-group">${state.gifts.map((g) => {
-            const item = data.item(g.item_id);
-            return `
-              <label class="row check-row">
-                <input type="checkbox" data-action="thank-you" data-id="${g.id}" ${g.thank_you_sent ? "checked" : ""}>
-                <span class="text"><span class="headline">${esc(item?.name)}${item?.is_fund ? ` · ${money(g.amount)}` : ""}</span>
-                <span class="subheadline secondary">From ${guestName(g.guest_id)} · ${stamp(g.given_at)} · ${g.thank_you_sent ? "Thank-you sent" : "Thank-you due"}</span>
-                ${g.note ? `<span class="subheadline secondary">“${esc(g.note)}”</span>` : ""}</span>
-              </label>`;
-          }).join("")}</div>
-        </section>` : ""}
-      <section class="stack">
-        <h2 class="title3">Other stores</h2>
-        <p class="subheadline secondary">Guests see registries you keep elsewhere next to this one.</p>
-        ${state.links.length ? `<div class="row-group">${state.links.map((l) => `
-          <div class="row">${icon(icons.link)}<span class="text"><span class="headline">${esc(l.name)}</span><span class="subheadline secondary">${esc(l.url)}</span></span>
-            <button class="button tertiary small" type="button" data-action="delete-link" data-id="${l.id}" aria-label="Remove ${esc(l.name)}">Remove</button></div>`).join("")}</div>` : ""}
-        <form class="panel stack-sm" id="link-form">
-          <div class="two-up">
-            ${field("store", "Store", '<input id="store" name="name" placeholder="Crate & Barrel" required>')}
-            ${field("url", "Link", '<input id="url" name="url" type="url" placeholder="https://…" required>')}
-          </div>
-          <button class="button secondary" type="submit">Link registry</button>
-        </form>
-      </section>`;
+        : '<p class="panel subheadline secondary">Add gifts and cash funds. Guests see them on your wedding website and can say “I’ll get this,” so nobody buys the same thing twice.</p>'}`;
   },
 
   // Add or change a gift or cash fund (app: CR2).
@@ -419,10 +414,10 @@ const pages = {
           <label><input type="radio" name="kind" value="gift" ${i.is_fund ? "" : "checked"}><span>Gift</span></label>
           <label><input type="radio" name="kind" value="fund" ${i.is_fund ? "checked" : ""}><span>Cash fund</span></label>
         </div>
-        ${field("item-name", "Name", `<input id="item-name" name="name" value="${esc(i.name)}" placeholder="Stand mixer" required>`)}
+        ${field("item-name", "Name", `<input id="item-name" name="name" value="${esc(i.name)}" placeholder="Gift name" required>`)}
         ${field("price", `<span id="price-label">${i.is_fund ? "Goal ($)" : "Price ($)"}</span>`, `<input id="price" name="price" type="number" min="0" max="1000000" step="1" value="${esc(i.price)}" required>`)}
         ${field("link", "Store link (optional)", `<input id="link" name="link" value="${esc(i.link)}" placeholder="https://…">`)}
-        ${field("note", "Note for guests (optional)", `<textarea id="note" name="note" placeholder="The blue one, please!">${esc(i.note)}</textarea>`)}
+        ${field("note", "Note for guests (optional)", `<textarea id="note" name="note" placeholder="Color, size or anything else">${esc(i.note)}</textarea>`)}
         <label class="check" id="bought-field" ${i.is_fund ? "hidden" : ""}><input type="checkbox" name="purchased" ${i.purchased ? "checked" : ""}><span>We already have this (shows as bought)</span></label>
         <button class="button primary" type="submit">${isNew ? "Add to registry" : "Save changes"}</button>
       </form>
@@ -458,13 +453,70 @@ const pages = {
         ${field("w-names", "Your names", `<input id="w-names" name="names" value="${esc(w.couple_names)}" required>`)}
         ${field("w-date", "Wedding date", `<input id="w-date" name="date" type="date" value="${esc(w.date)}" required>`)}
         ${field("w-venue", "Venue", `<input id="w-venue" name="venue" value="${esc(w.venue)}">`)}
-        ${field("w-hotel", "Where to stay", `<textarea id="w-hotel" name="hotel" placeholder="We have a room block at…">${esc(w.hotel_info)}</textarea>`)}
-        ${field("w-parking", "Parking", `<textarea id="w-parking" name="parking" placeholder="Free parking behind the venue.">${esc(w.parking_info)}</textarea>`)}
+        ${field("w-hotel", "Where to stay", `<textarea id="w-hotel" name="hotel" placeholder="Hotels near the venue">${esc(w.hotel_info)}</textarea>`)}
+        ${field("w-parking", "Parking", `<textarea id="w-parking" name="parking" placeholder="Where guests can park">${esc(w.parking_info)}</textarea>`)}
         ${field("w-photo", "Your photo", '<input id="w-photo" name="photo" type="file" accept="image/*">', "Guests see it on the home page of their invite.")}
         <button class="button primary" type="submit">Save changes</button>
       </form>`;
   },
 };
+
+/** Gifts guests gave, with thank-you checkboxes (shown on Home). */
+function thankYous() {
+  if (!state.gifts.length) return "";
+  const guestName = (id) => esc(data.guest(id)?.name ?? "A guest");
+  const due = state.gifts.filter((g) => !g.thank_you_sent).length;
+  return `
+        <section class="stack">
+          <h2 class="title3">Thank-you notes</h2>
+          <p class="subheadline secondary">${due ? `${count(due, "thank-you")} to send. ` : "All sent. "}Tick a gift once you’ve sent the note.</p>
+          <div class="row-group">${state.gifts.map((g) => {
+            const item = data.item(g.item_id);
+            return `
+              <label class="row check-row">
+                <input type="checkbox" data-action="thank-you" data-id="${g.id}" ${g.thank_you_sent ? "checked" : ""}>
+                <span class="text"><span class="headline">${esc(item?.name)}${item?.is_fund ? ` · ${money(g.amount)}` : ""}</span>
+                <span class="subheadline secondary">From ${guestName(g.guest_id)} · ${stamp(g.given_at)} · ${g.thank_you_sent ? "Thank-you sent" : "Thank-you due"}</span>
+                ${g.note ? `<span class="subheadline secondary">“${esc(g.note)}”</span>` : ""}</span>
+              </label>`;
+          }).join("")}</div>
+        </section>`;
+}
+
+/** Registries the couple keeps at other stores (shown on Home). */
+function otherStores() {
+  return `<section class="stack">
+        <h2 class="title3">Registries at other stores</h2>
+        <p class="subheadline secondary">Guests see these next to your gift list.</p>
+        ${state.links.length ? `<div class="row-group">${state.links.map((l) => `
+          <div class="row">${icon(icons.link)}<span class="text"><span class="headline">${esc(l.name)}</span><span class="subheadline secondary">${esc(l.url)}</span></span>
+            <button class="button tertiary small" type="button" data-action="delete-link" data-id="${l.id}" aria-label="Remove ${esc(l.name)}">Remove</button></div>`).join("")}</div>` : ""}
+        <form class="panel stack-sm" id="link-form">
+          <div class="two-up">
+            ${field("store", "Store", '<input id="store" name="name" placeholder="Store name" required>')}
+            ${field("url", "Link", '<input id="url" name="url" type="url" placeholder="https://…" required>')}
+          </div>
+          <button class="button secondary" type="submit">Link registry</button>
+        </form>
+      </section>`;
+}
+
+/** The large card for the next event on Home: photo on top, then the details. */
+function nextEventCard(e) {
+  const photo = photoFor(e);
+  const days = daysUntil(e.day);
+  return `
+    <a class="card next-event" href="#/event/${e.id}">
+      ${photo ? `<img src="${esc(photo)}" alt="">` : ""}
+      <div class="stack">
+        <span class="footnote secondary">${days === 0 ? "Today" : days === 1 ? "Tomorrow" : `In ${count(days, "day")}`}</span>
+        <span class="title2">${esc(e.name)}</span>
+        <span class="headline secondary">${when(e)}</span>
+        ${e.venue ? `<span class="subheadline secondary">${esc(e.venue)}</span>` : ""}
+        ${e.rsvp_required ? `<span class="subheadline">${rsvpLine(e)}</span>` : ""}
+      </div>
+    </a>`;
+}
 
 function eventCard(e) {
   const photo = photoFor(e);
@@ -517,6 +569,9 @@ function render({ keepScroll = false } = {}) {
   document.body.classList.toggle("signed-out", !signedIn);
   if (!data.signedIn()) {
     main.innerHTML = (pagesSignedOut[name] ?? pagesSignedOut.signin)();
+  } else if (name === "new-password") {
+    document.body.classList.add("signed-out");
+    main.innerHTML = newPasswordPage();
   } else if (!state.wedding) {
     main.innerHTML = setupPage();
   } else {
@@ -529,6 +584,7 @@ function render({ keepScroll = false } = {}) {
   }
   const heading = main.querySelector("h1");
   document.title = `${heading?.textContent.trim() || "Intertwine"} · Intertwine`;
+  if (pendingNote) { note(pendingNote); pendingNote = null; }
   if (keepScroll) return;
   window.scrollTo(0, 0);
   if (heading && location.hash) {
@@ -565,6 +621,14 @@ function note(text) {
   main.insertAdjacentHTML("afterbegin", `<p class="panel success-note subheadline" role="status">${esc(text)}</p>`);
 }
 
+/** Opens a page and shows a message at its top once it's drawn. */
+let pendingNote = null;
+function go(hash, message = null) {
+  pendingNote = message;
+  if (location.hash === hash) render();
+  else location.hash = hash; // the hashchange listener draws the page
+}
+
 const text = (fields, name) => String(fields.get(name) ?? "").trim();
 const optionalDate = (fields, name) => text(fields, name) || null;
 
@@ -585,13 +649,24 @@ main.addEventListener("submit", async (e) => {
     });
     if (!ok) return;
     if (confirmFirst) {
-      location.hash = "#/signin";
-      render();
-      note("Check your email and click the link to confirm your account. Then sign in here.");
+      go("#/signin", "Check your email and click the link to confirm your account. Then sign in here.");
       return;
     }
     location.hash = "#/home";
     render();
+  }
+
+  if (form.id === "forgot-form") {
+    if (await busy(form, "Sending…", () => data.forgotPassword(text(fields, "email")))) {
+      go("#/signin", "If there’s an account for that email, a reset link is on its way. Check your inbox (and spam).");
+    }
+  }
+
+  if (form.id === "password-form") {
+    if (await busy(form, "Saving…", () => data.setPassword(String(fields.get("password"))))) {
+      await data.load().catch(() => {});
+      go("#/home", "Your password is changed.");
+    }
   }
 
   if (form.id === "setup-form") {
@@ -759,6 +834,18 @@ async function refresh() {
 
 async function start() {
   main.innerHTML = '<p class="secondary center" role="status">Loading…</p>';
+  // Back from the password-reset email: Supabase puts the sign-in (or an error) after "#".
+  const link = new URLSearchParams(location.hash.slice(1));
+  let linkProblem = null;
+  if (link.get("type") === "recovery" && link.get("access_token")) {
+    history.replaceState(null, "", "#/new-password");
+    try { await data.signInFromLink(link); } catch (error) { linkProblem = error.message; }
+  } else if (link.get("error_description")) {
+    history.replaceState(null, "", "#/signin");
+    linkProblem = link.get("error_code") === "otp_expired"
+      ? "That link has expired or was already used. Ask for a new one with “Forgot password?”."
+      : link.get("error_description").replace(/\+/g, " ");
+  }
   if (data.signedIn()) {
     try {
       await data.load();
@@ -778,6 +865,7 @@ async function start() {
   setInterval(refresh, 30_000);
   document.addEventListener("visibilitychange", refresh);
   render();
+  if (linkProblem) go("#/signin", linkProblem);
 }
 
 start();
