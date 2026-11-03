@@ -237,8 +237,9 @@ export const data = {
     await this.load();
   },
 
-  async saveWedding(changes, photo) {
-    if (photo) changes.photo_url = await uploadPhoto(photo);
+  /** `crop` (like "#pos=50,30") says which part of a new photo to show. */
+  async saveWedding(changes, photo, crop = "") {
+    if (photo) changes.photo_url = (await uploadPhoto(photo)) + crop;
     await update("weddings", state.wedding.id, changes);
     await this.load();
   },

@@ -373,7 +373,6 @@ a.stat:hover { border-color: var(--border-default); }
 }
 .hero-photo:hover { background: rgb(0 0 0 / 0.5); }
 .hero-photo.busy { opacity: 0.6; pointer-events: none; }
-.hero-move { right: calc(var(--space-sm) + 48px); }
 .stat.hero.moving { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
 .stat.hero.moving:active { cursor: grabbing; }
 .stat.hero.moving .hero-photo { display: none; }
