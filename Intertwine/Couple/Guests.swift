@@ -5,6 +5,7 @@ import SwiftUI
 struct GuestsView: View {
     @Environment(AppStore.self) private var store
     @State private var addingGuest = false
+    @State private var pickingContacts = false
 
     var body: some View {
         NavigationStack {
@@ -43,10 +44,13 @@ struct GuestsView: View {
                     VStack(alignment: .leading, spacing: Space.xs) {
                         HStack {
                             SectionTitle("Guest list")
-                            Button {
-                                addingGuest = true
+                            Menu {
+                                Button("Pick from Contacts", systemImage: "person.crop.circle.badge.plus") {
+                                    pickingContacts = true
+                                }
+                                Button("Add one guest", systemImage: "plus") { addingGuest = true }
                             } label: {
-                                Label("Add guest", systemImage: "plus")
+                                Label("Add guests", systemImage: "plus")
                                     .font(Typo.headline)
                             }
                             .fixedSize()
@@ -79,6 +83,7 @@ struct GuestsView: View {
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: UUID.self) { CoupleEventDetailView(eventID: $0) }
             .sheet(isPresented: $addingGuest) { AddGuestSheet() }
+            .background { ContactPicker(isPresented: $pickingContacts) { store.addGuests(named: $0) } }
         }
     }
 }

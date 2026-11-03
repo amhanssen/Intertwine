@@ -258,6 +258,11 @@ export const data = {
     await insert("guests", { wedding_id: state.wedding.id, name, party_size: partySize });
     await this.load();
   },
+  /** Adds several guests at once (from a contacts file or a pasted list). */
+  async addGuests(names) {
+    await rest("POST", "guests", names.map((name) => ({ wedding_id: state.wedding.id, name, party_size: 1 })), "return=minimal");
+    await this.load();
+  },
   async saveGuest(id, changes) { await update("guests", id, changes); await this.load(); },
   async deleteGuest(id) { await remove("guests", id); await this.load(); },
 

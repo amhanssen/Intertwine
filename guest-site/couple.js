@@ -178,6 +178,69 @@ function setupPage() {
     <button class="link-button" type="button" data-action="sign-out">Sign out</button>`;
 }
 
+// ---------- Contacts import ----------
+
+/** Names from a vCard (.vcf) or CSV file exported from Contacts, Google or Outlook. */
+function contactNames(textFile) {
+  return /BEGIN:VCARD/i.test(textFile) ? vcardNames(textFile) : csvNames(textFile);
+}
+
+function vcardNames(textFile) {
+  const unescape = (v) => v.replace(/\\([,;\\])/g, "$1").replace(/\\n/gi, " ").trim();
+  const lines = textFile.replace(/\r?\n[ \t]/g, "").split(/\r?\n/); // unfold wrapped lines
+  const names = [];
+  let full = "", parts = "";
+  for (const line of lines) {
+    const [key, ...rest] = line.split(":");
+    const value = rest.join(":");
+    const prop = key.split(";")[0].toUpperCase().replace(/^ITEM\d+\./, "");
+    if (prop === "BEGIN") { full = ""; parts = ""; }
+    if (prop === "FN") full = unescape(value);
+    if (prop === "N") {
+      const [last = "", first = ""] = value.split(/(?<!\\);/).map(unescape);
+      parts = [first, last].filter(Boolean).join(" ");
+    }
+    if (prop === "END" && (full || parts)) names.push(full || parts);
+  }
+  return names;
+}
+
+function csvNames(textFile) {
+  const rows = parseCSV(textFile).filter((r) => r.some((c) => c.trim()));
+  if (!rows.length) return [];
+  const header = rows[0].map((h) => h.trim().toLowerCase());
+  const col = (...names) => header.findIndex((h) => names.includes(h));
+  const full = col("name", "full name", "display name");
+  const first = col("first name", "given name");
+  const last = col("last name", "family name");
+  if (full < 0 && first < 0) return rows.map((r) => r[0].trim()).filter(Boolean); // a plain list of names
+  return rows.slice(1).map((r) => {
+    const joined = [r[first], r[last]].filter((v) => v?.trim()).map((v) => v.trim()).join(" ");
+    return (full >= 0 && r[full]?.trim()) || joined;
+  }).filter(Boolean);
+}
+
+/** A small CSV reader that handles quoted cells with commas and line breaks. */
+function parseCSV(textFile) {
+  const rows = [[]];
+  let cell = "", quoted = false;
+  for (let i = 0; i < textFile.length; i++) {
+    const c = textFile[i];
+    if (quoted) {
+      if (c === '"' && textFile[i + 1] === '"') { cell += '"'; i++; }
+      else if (c === '"') quoted = false;
+      else cell += c;
+    } else if (c === '"') quoted = true;
+    else if (c === ",") { rows.at(-1).push(cell); cell = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && textFile[i + 1] === "\n") i++;
+      rows.at(-1).push(cell); cell = ""; rows.push([]);
+    } else cell += c;
+  }
+  rows.at(-1).push(cell);
+  return rows;
+}
+
 // ---------- Create event steps (app: CreateEventFlow) ----------
 
 const stepNames = ["Basics", "Date & place", "Dress code & RSVP", "Guest preview", "Publish"];
@@ -537,6 +600,16 @@ const pages = {
         </div>
         <button class="button primary" type="submit">Add guest</button>
       </form>
+      <details class="panel bulk">
+        <summary class="headline">Add many at once</summary>
+        <form class="stack-sm" id="bulk-form">
+          ${field("contacts-file", "Contacts file (optional)", '<input id="contacts-file" type="file" accept=".vcf,.csv,.txt,text/vcard,text/x-vcard,text/csv">',
+            "On a Mac: in Contacts, select people, then File → Export → Export vCard. In Google Contacts: Export → vCard.")}
+          ${field("bulk-names", "Names, one per line", '<textarea id="bulk-names" name="names" rows="6" placeholder="Jessica Avery\nMarcus Lee\nRosa Diaz"></textarea>',
+            "Names from your file show up here. Remove anyone you’re not inviting.")}
+          <button class="button primary" type="submit">Add these guests</button>
+        </form>
+      </details>
       ${state.guests.length ? `<div class="row-group">${state.guests.map((g) => row({
         href: `#/guest/${g.id}`, title: esc(g.name), iconPath: icons.person,
         subtitle: `Party of ${g.party_size} · ${guestReplies(g)}`,
@@ -908,6 +981,22 @@ main.addEventListener("submit", async (e) => {
     }
   }
 
+  if (form.id === "bulk-form") {
+    const taken = new Set(state.guests.map((g) => g.name.toLowerCase()));
+    const names = [];
+    for (const line of String(fields.get("names")).split(/\r?\n/)) {
+      const name = line.trim();
+      if (name && !taken.has(name.toLowerCase())) { taken.add(name.toLowerCase()); names.push(name); }
+    }
+    if (!names.length) {
+      showError(form, { message: "Add at least one new name. Guests already on your list are skipped." });
+      return;
+    }
+    if (await busy(form, "Adding…", () => data.addGuests(names))) {
+      go("#/guests", `Added ${count(names.length, "guest")}. Each one has their own invite link.`);
+    }
+  }
+
   if (form.id === "guest-edit-form") {
     if (await busy(form, "Saving…", () => data.saveGuest(form.dataset.id, {
       name: text(fields, "name"), party_size: Number(fields.get("party")) || 1,
@@ -943,6 +1032,15 @@ main.addEventListener("change", async (e) => {
     const fund = target.value === "fund";
     main.querySelector("#price-label").textContent = fund ? "Goal ($)" : "Price ($)";
     main.querySelector("#bought-field").hidden = fund;
+  }
+  if (target.id === "contacts-file" && target.files[0]) {
+    const box = main.querySelector("#bulk-names");
+    const names = contactNames(await target.files[0].text());
+    const form = target.form;
+    form.querySelector(".form-error")?.remove();
+    if (!names.length) { showError(form, { message: "No names found in that file. Try a vCard (.vcf) or CSV file." }); return; }
+    box.value = [box.value.trim(), ...names].filter(Boolean).join("\n");
+    box.focus();
   }
   if (target.name === "rsvp") {
     const required = target.value === "yes";
