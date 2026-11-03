@@ -195,6 +195,7 @@ div.row:hover { background: none; }
   width: 64px; height: 64px; flex: none; object-fit: cover;
   border-radius: var(--radius-md); background: var(--bg-accent-subtle);
 }
+span.thumb { display: grid; place-items: center; color: var(--text-secondary); }
 .event-card .bottom { display: flex; justify-content: space-between; align-items: center; gap: var(--space-sm); }
 
 .cover {
@@ -245,6 +246,18 @@ div.row:hover { background: none; }
   border-radius: var(--radius-md); font-size: 17px;
 }
 .field textarea { min-height: 96px; resize: vertical; }
+/* iPhone Safari draws date and time boxes wider than the page and centres the text. */
+.field input[type="date"], .field input[type="time"] {
+  -webkit-appearance: none; appearance: none; display: block; min-width: 0; text-align: left;
+}
+.field input::-webkit-date-and-time-value { text-align: left; }
+/* Photo pickers: a soft pill button instead of the plain "Choose File" one. */
+.field input[type="file"] { padding: var(--space-sm); font-size: 15px; color: var(--text-secondary); cursor: pointer; }
+.field input[type="file"]::file-selector-button {
+  font: inherit; font-weight: 600; color: var(--text-primary); cursor: pointer;
+  margin-right: var(--space-sm); padding: 8px 16px; border: 0; border-radius: 999px;
+  background: var(--bg-accent-subtle);
+}
 .field input:focus, .field textarea:focus, .field select:focus { outline: none; border: 2px solid var(--border-focus); }
 [hidden] { display: none !important; }
 fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
@@ -388,6 +401,7 @@ a.stat:hover { border-color: var(--border-default); }
 #hero-photo:focus-visible + .hero-photo { outline: 2px solid var(--border-focus); outline-offset: 2px; }
 
 .two-up { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-sm); }
+.two-up > * { min-width: 0; }
 .two-up.wide-first { grid-template-columns: 2fr 1fr; }
 @media (max-width: 380px) { .two-up:not(.wide-first) { grid-template-columns: 1fr; } }
 

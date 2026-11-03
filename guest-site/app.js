@@ -1,5 +1,6 @@
 // Intertwine guest site: the guest side of the app as a website.
-// Pages follow the Figma guest screens (GH Home, GS Schedule, GW What to Wear, GD Details).
+// Pages follow the Figma guest screens (GH Home, GS Schedule, GW What to Wear, GD Registry).
+// The wedding details (couple photo, where to stay, getting there) are on Home.
 // Each page is a function that returns HTML; the address after "#" picks the page.
 
 import { data } from "./data.js";
@@ -80,7 +81,7 @@ function eventCard(event, { date = when(event) } = {}) {
   return `
     <a class="card event-card" href="#/event/${event.id}">
       <div class="top">
-        ${event.photo ? `<img class="thumb" src="${esc(event.photo)}" alt="" loading="lazy">` : '<span class="thumb" aria-hidden="true"></span>'}
+        ${thumb(event)}
         <div class="stack" style="gap:2px">
           <span class="title3">${esc(event.name)}</span>
           <span class="subheadline secondary">${date}</span>
@@ -89,6 +90,16 @@ function eventCard(event, { date = when(event) } = {}) {
       </div>
       <div class="bottom">${badgeFor(event)}<span class="footnote secondary">${esc(event.dressCode)}</span></div>
     </a>`;
+}
+
+/** The event's photo; without one, a sample photo for its kind of event, or a calendar. */
+function thumb(event) {
+  const kinds = ["Welcome Party", "Rehearsal Dinner", "Engagement Party", "Bridal Shower", "Wedding Day", "Ceremony", "Reception"];
+  const kind = kinds.find((k) => event.name?.toLowerCase().includes(k.toLowerCase()));
+  const sample = { Ceremony: "WeddingDay", Reception: "WeddingDay" }[kind] ?? kind?.replaceAll(" ", "");
+  const src = event.photo || (sample && `images/Event${sample}.jpg`);
+  return src ? `<img class="thumb" src="${esc(src)}" alt="" loading="lazy">`
+    : `<span class="thumb" aria-hidden="true">${icon(icons.calendar, 24)}</span>`;
 }
 
 function row({ href, title, subtitle, iconPath }) {
@@ -209,13 +220,15 @@ const pages = {
     const due = waiting[0];
     const next = nextEvent();
     const many = rsvpEvents().length > 1;
+    const w = data.wedding();
     return `
       <header class="screen-header">
         <div class="stack">
-          <span class="footnote secondary">${esc(couple())} · ${dayLong(data.wedding().date)}</span>
+          <span class="footnote secondary">${esc(couple())} · ${dayLong(w.date)}</span>
           <h1 class="large-title">Welcome, ${esc(firstName())}</h1>
         </div>
       </header>
+      ${w.photo ? `<img class="cover couple-photo" src="${esc(w.photo.split("#")[0])}" style="object-position:${photoPosition(w.photo)}" alt="${esc(couple())}">` : ""}
 
       ${due ? `
         <section class="panel accent" aria-label="RSVP needed">
@@ -245,10 +258,23 @@ const pages = {
         <p class="subheadline">${esc(couple())} haven’t shared any events yet. Check back here for the schedule.</p>
       </section>` : ""}
 
+      ${w.venue || w.hotelInfo ? `
+      <section class="panel">
+        <h2 class="title3">Where to stay</h2>
+        ${w.venue ? `<p class="headline">${esc(w.venue)}</p>` : ""}
+        ${w.hotelInfo ? `<p class="subheadline secondary">${esc(w.hotelInfo)}</p>` : ""}
+      </section>` : ""}
+      ${w.venue || w.parkingInfo ? `
+      <section class="panel">
+        <h2 class="title3">Getting there</h2>
+        ${w.parkingInfo ? `<p class="subheadline secondary">${esc(w.parkingInfo)}</p>` : ""}
+        ${w.venue ? `<a class="link-button" href="${mapsLink(w.venue)}" target="_blank" rel="noopener">Get directions</a>` : ""}
+      </section>` : ""}
+
       <div class="row-group">
-        ${row({ href: "#/registry", title: "Registry", subtitle: `Browse ${esc(couple())}’s gift list` })}
-        ${row({ href: "#/ask", title: "Have a question?", subtitle: `Ask ${esc(couple())} directly` })}
-      </div>`;
+        ${row({ href: "#/ask", title: "Have a question?", subtitle: `Ask ${esc(couple())} directly`, iconPath: icons.chat })}
+      </div>
+      ${data.isDemo() ? `<p class="footnote tertiary center">This is a sample wedding everyone can try. <button class="link-button footnote" id="reset" style="display:inline;width:auto;padding:0">Start the demo over</button></p>` : ""}`;
   },
 
   // GS1 · Schedule
@@ -388,42 +414,16 @@ const pages = {
         </a>`).join("")}`;
   },
 
-  // GD1 · Wedding details
-  details() {
-    const w = data.wedding();
-    return `
-      <header class="stack">
-        <h1 class="large-title">Details</h1>
-        <p class="subheadline secondary">${esc(couple())} · ${dayLong(w.date)}</p>
-      </header>
-      ${w.photo ? `<img class="cover couple-photo" src="${esc(w.photo.split("#")[0])}" style="object-position:${photoPosition(w.photo)}" alt="${esc(couple())}">` : ""}
-      ${w.venue || w.hotelInfo ? `
-      <section class="panel">
-        <h2 class="title3">Where to stay</h2>
-        ${w.venue ? `<p class="headline">${esc(w.venue)}</p>` : ""}
-        ${w.hotelInfo ? `<p class="subheadline secondary">${esc(w.hotelInfo)}</p>` : ""}
-      </section>` : ""}
-      ${w.venue || w.parkingInfo ? `
-      <section class="panel">
-        <h2 class="title3">Getting there</h2>
-        ${w.parkingInfo ? `<p class="subheadline secondary">${esc(w.parkingInfo)}</p>` : ""}
-        ${w.venue ? `<a class="link-button" href="${mapsLink(w.venue)}" target="_blank" rel="noopener">Get directions</a>` : ""}
-      </section>` : ""}
-      <div class="row-group">
-        ${row({ href: "#/registry", title: "Registry", subtitle: `Browse ${esc(couple())}’s gift list`, iconPath: icons.gift })}
-        ${row({ href: "#/ask", title: `Ask ${esc(couple())}`, subtitle: "Send the couple a question", iconPath: icons.chat })}
-      </div>
-      ${data.isDemo() ? `<p class="footnote tertiary center">This is a sample wedding everyone can try. <button class="link-button footnote" id="reset" style="display:inline;width:auto;padding:0">Start the demo over</button></p>` : ""}`;
-  },
+  // Old links to the Details page open Home, where the details are now.
+  details: () => pages.home(),
 
   // GD2 · Registry
   registry(tab = "gifts") {
     const items = data.registry().filter((i) => (tab === "funds" ? i.fund : !i.fund));
     const links = data.registryLinks();
     return `
-      ${back("#/details", "Details")}
       <header class="stack">
-        <h1 class="title1">Registry</h1>
+        <h1 class="large-title">Registry</h1>
         <p class="subheadline secondary">Gifts for ${esc(couple())}</p>
       </header>
       <nav class="segmented" aria-label="Registry sections">
@@ -530,7 +530,7 @@ const pages = {
   ask(eventId) {
     const mine = data.questions();
     return `
-      ${back(eventId ? `#/event/${eventId}` : "#/details", eventId ? data.event(eventId)?.name ?? "Back" : "Details")}
+      ${back(eventId ? `#/event/${eventId}` : "#/home", eventId ? data.event(eventId)?.name ?? "Back" : "Home")}
       <header class="stack">
         <h1 class="title1">Ask ${esc(couple())}</h1>
         <p class="subheadline secondary">They’ll answer here, so you don’t have to text them.</p>
@@ -619,8 +619,8 @@ function googleCalendarLink(event) {
 
 // ---------- Routing ----------
 
-const tabs = { home: "home", schedule: "schedule", event: "schedule", rsvp: "schedule", sent: "schedule", wear: "wear", details: "details", registry: "details", gift: "details", ask: "details" };
-const titles = { home: "Home", schedule: "Schedule", wear: "What to Wear", details: "Details", registry: "Registry", ask: "Ask the couple" };
+const tabs = { home: "home", schedule: "schedule", event: "schedule", rsvp: "schedule", sent: "schedule", wear: "wear", details: "home", registry: "registry", gift: "registry", ask: "home" };
+const titles = { home: "Home", schedule: "Schedule", wear: "What to Wear", details: "Home", registry: "Registry", ask: "Ask the couple" };
 
 function render() {
   const [path, param] = location.hash.replace(/^#\/?/, "").split("/");
