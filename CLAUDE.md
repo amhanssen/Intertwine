@@ -35,6 +35,7 @@ One wedding, in one place. **The couple side is an iPhone app; the guest side is
 
 Done and committed on `main`:
 - Brand pass, onboarding (O1–O6), guest website and couple app, all connected to Supabase.
+- Mood boards (Nov 2026): couples add up to 9 photos (`events.mood_photos`) and a Pinterest board link (`events.mood_link`) in step 3 of the event form on the couple website; guests see them with the dress code, with a live board preview for full pinterest.com addresses (short pin.it links only get a button). The iPhone app doesn't show them yet. Add to calendar makes a real .ics file on tap (works on iPhone).
 - Photos on the website, the full registry (app CR1–CR4, website GD2 with "I'll get this" and cash funds), reminders, add-to-calendar (file + Google), Apple/Google Maps, link previews (`guest-site/images/share.jpg`).
 
 **Amanda must re-run `supabase/schema.sql`** for photos and the registry to work online (the website copes until then). The couple app is **not yet tested with a real account**.
