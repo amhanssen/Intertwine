@@ -16,6 +16,7 @@ One wedding, in one place. **The couple side is an iPhone app; the guest side is
 
 - **iOS app** (SwiftUI, `Intertwine.xcodeproj`, iOS 17+): onboarding, couple tabs (Home, Events, Guests, Registry), a guest preview, and a Mia & Ryan demo.
 - **Guest website** (`guest-site/`, plain HTML/CSS/JS, no build step): Home, RSVP, Schedule, event pages, What to Wear, Details, Registry, Ask the couple. Live at **https://amhanssen.github.io/Intertwine/** (demo link: `?invite=demo-rosa`). Published by `.github/workflows/guest-site.yml` when `main` is pushed.
+- **Couple website** (`guest-site/couple.html`, `couple.js`, `couple-data.js`): the couple side for people without the app, at https://amhanssen.github.io/Intertwine/couple.html. Same account and wedding as the app (the newest wedding the user owns). It talks to the tables directly. The app re-uploads all its rows after a change on the phone, so something deleted on the website can come back if the phone hadn't synced yet.
 - **Database**: Supabase project `nhdfuarjvwoeghgyxtvw` (https://nhdfuarjvwoeghgyxtvw.supabase.co). Setup is `supabase/schema.sql`; Amanda runs it in the Supabase SQL Editor (it's safe to re-run). Guests only reach it through the `guest_` functions (`guest_view`, `guest_rsvp`, `guest_ask`, `guest_give`, `guest_ungive`) with their invite code; couples sign in and row-level security limits them to their own wedding. The publishable key in the code is meant to be public.
 - **Design**: Figma file *Everyday enhancements module 3* (file key `GcfFAJunr96orm0j8ebEBn`), page **Site Map · Brand pass** (her current designs). Colors and spacing come from `design-tokens.json`. Headings: Alegreya Sans on the web; the app falls back to the system font until Elido is added. Brand assets: the script monogram plus sample photos (`Assets.xcassets/Brand`, `guest-site/images`).
 
@@ -43,7 +44,8 @@ Supabase still emails a confirmation link on sign-up. She may turn off **Authent
 ## Next steps (in rough order)
 
 1. Help her test: create an account in the app → add a guest, a gift and a photo, publish an event → open the guest's link → RSVP and "I'll get this" on the website → pull down on Home / Registry and see them. Fix whatever breaks.
-2. Later: push notifications, the Elido font, TestFlight for real testers (needs the $99 Apple Developer Program).
+2. Test the couple website with her real account once it's published.
+3. Later: push notifications, the Elido font, TestFlight for real testers (needs the $99 Apple Developer Program).
 
 ## Running things
 
