@@ -114,6 +114,7 @@ function calendarButtons(event) {
     </div>`;
 }
 
+const rsvpEvents = () => data.events().filter((e) => e.rsvpRequired);
 const needsReply = () => data.events().filter((e) => e.rsvpRequired && !data.rsvp(e.id));
 
 const nextEvent = () => {
@@ -122,13 +123,86 @@ const nextEvent = () => {
   return events.find((e) => toDate(e.day, e.start) >= now) ?? events.at(-1);
 };
 
+/** "the Welcome Party, the Ceremony and the Brunch" */
+function listNames(events) {
+  const names = events.map((e) => `the ${esc(e.name)}`);
+  return names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0];
+}
+
+/** GH2 for every event at once: Yes or No for each, one party size and one note. */
+function rsvpAll() {
+  const events = rsvpEvents();
+  if (!events.length) return notFound();
+  const guest = data.guest();
+  const replies = events.map((e) => data.rsvp(e.id));
+  const anyYes = replies.some((r) => r?.attending);
+  const party = replies.find((r) => r?.attending)?.partyCount ?? 1;
+  const note = replies[0]?.note ?? "";
+  const counts = Array.from({ length: guest.partySize }, (_, i) => i + 1);
+  return `
+    ${back("#/home", "Home")}
+    <header class="stack">
+      <h1 class="title1">Will you be there?</h1>
+      <p class="subheadline secondary">${esc(couple())} invited you to ${events.length} events. Choose yes or no for each, then send them all at once.</p>
+    </header>
+    <form class="stack-lg" id="rsvp-all-form" novalidate>
+      ${events.map((e, i) => {
+        const r = replies[i];
+        return `
+        <fieldset class="panel rsvp-event" data-event="${e.id}">
+          <legend class="visually-hidden">${esc(e.name)}</legend>
+          <div class="stack" style="gap:2px">
+            <span class="title3">${esc(e.name)}</span>
+            <span class="subheadline secondary">${when(e)}${e.venue ? ` · ${esc(e.venue)}` : ""}</span>
+            ${!r && e.rsvpDeadline ? `<span class="footnote secondary">Reply by ${dayShort(e.rsvpDeadline)}</span>` : ""}
+          </div>
+          <div class="segmented">
+            <label><input type="radio" name="attending-${e.id}" value="yes" ${r?.attending ? "checked" : ""}><span>Yes, I’ll be there</span></label>
+            <label><input type="radio" name="attending-${e.id}" value="no" ${r && !r.attending ? "checked" : ""}><span>Can’t make it</span></label>
+          </div>
+          <p class="field-error" hidden>Choose yes or no</p>
+        </fieldset>`;
+      }).join("")}
+      ${guest.partySize > 1 ? `
+      <div class="field" id="party-field" ${anyYes ? "" : "hidden"}>
+        <label for="party">Who’s coming with you?</label>
+        <select id="party" name="party">
+          ${counts.map((n) => `<option value="${n}" ${party === n ? "selected" : ""}>${n === 1 ? "Just me" : `${n} people, including me`}</option>`).join("")}
+        </select>
+        <span class="helper">Your invitation is for ${guest.partySize} guests</span>
+      </div>` : ""}
+      <div class="field">
+        <label for="note">Note for ${esc(couple())} (optional)</label>
+        <textarea id="note" name="note" placeholder="Can’t wait to celebrate!">${esc(note)}</textarea>
+      </div>
+      <button class="button primary" type="submit">Send RSVP</button>
+    </form>`;
+}
+
+/** GH3 after replying to everything: each event with its answer. */
+function sentAll() {
+  const events = rsvpEvents().filter((e) => data.rsvp(e.id));
+  if (!events.length) return notFound();
+  const going = events.filter((e) => data.rsvp(e.id).attending);
+  return `
+    <div class="success" aria-hidden="true">${icon(icons.check, 36)}</div>
+    <header class="stack center">
+      <h1 class="title1">${going.length ? `See you there, ${esc(firstName())}!` : `Thanks for letting them know, ${esc(firstName())}`}</h1>
+      <p class="secondary">${esc(couple())} will see your replies right away.${going.length ? " Open an event to add it to your calendar." : ""}</p>
+    </header>
+    ${events.map((e) => eventCard(e)).join("")}
+    <a class="button tertiary" href="#/home">Back to Home</a>`;
+}
+
 // ---------- Pages ----------
 
 const pages = {
   // GH1 · Home
   home() {
-    const due = needsReply()[0];
+    const waiting = needsReply();
+    const due = waiting[0];
     const next = nextEvent();
+    const many = rsvpEvents().length > 1;
     return `
       <header class="screen-header">
         <div class="stack">
@@ -140,8 +214,8 @@ const pages = {
       ${due ? `
         <section class="panel accent" aria-label="RSVP needed">
           <span class="title3">Please reply by ${dayShort(due.rsvpDeadline)}</span>
-          <p class="subheadline">${esc(couple())} are waiting on your RSVP for the ${esc(due.name)}.</p>
-          <a class="button primary" href="#/rsvp/${due.id}">RSVP now</a>
+          <p class="subheadline">${esc(couple())} are waiting on your RSVP for ${waiting.length > 1 ? listNames(waiting) : `the ${esc(due.name)}`}.</p>
+          <a class="button primary" href="${many ? "#/rsvp" : `#/rsvp/${due.id}`}">RSVP now</a>
         </section>` : ""}
 
       ${next ? `
@@ -180,6 +254,7 @@ const pages = {
         <h1 class="large-title">Schedule</h1>
         <p class="subheadline secondary">Every event you’re invited to, in order.</p>
       </header>
+      ${rsvpEvents().length > 1 ? `<a class="button ${needsReply().length ? "primary" : "secondary"}" href="#/rsvp">${needsReply().length ? "RSVP to all events" : "Change your RSVPs"}</a>` : ""}
       ${[...byDay].map(([day, events]) => `
         <section class="stack">
           <h2 class="title3">${dayLong(day)}</h2>
@@ -236,6 +311,7 @@ const pages = {
 
   // GH2 · RSVP
   rsvp(id) {
+    if (!id) return rsvpAll();
     const event = data.event(id);
     if (!event) return notFound();
     const reply = data.rsvp(id);
@@ -276,6 +352,7 @@ const pages = {
 
   // GH3 · RSVP sent
   sent(id) {
+    if (id === "all") return sentAll();
     const event = data.event(id);
     const reply = event && data.rsvp(id);
     if (!reply) return notFound();
@@ -551,7 +628,8 @@ function render() {
     else a.removeAttribute("aria-current");
   });
   const giftName = name === "gift" ? data.registry().find((i) => i.id === param)?.name : null;
-  document.title = `${titles[name] ?? giftName ?? data.event(param)?.name ?? "Intertwine"} · ${couple()}’s wedding`;
+  const allTitle = !param && name === "rsvp" ? "RSVP" : param === "all" && name === "sent" ? "RSVP sent" : null;
+  document.title = `${allTitle ?? titles[name] ?? giftName ?? data.event(param)?.name ?? "Intertwine"} · ${couple()}’s wedding`;
   window.scrollTo(0, 0);
   // After moving to another page, focus its heading so screen readers announce it.
   const heading = main.querySelector("h1");
@@ -593,6 +671,30 @@ main.addEventListener("submit", async (e) => {
     }));
     if (sent) location.hash = `#/sent/${id}`;
   }
+  if (form.id === "rsvp-all-form") {
+    const sets = [...form.querySelectorAll("fieldset[data-event]")];
+    let first = null;
+    for (const set of sets) {
+      const missing = !set.querySelector("input:checked");
+      set.querySelector(".field-error").hidden = !missing;
+      if (missing && !first) first = set;
+    }
+    if (first) {
+      first.scrollIntoView({ behavior: "smooth", block: "center" });
+      first.querySelector("input").focus({ preventScroll: true });
+      return;
+    }
+    const partyCount = Number(fields.get("party") ?? 1);
+    const note = String(fields.get("note") ?? "").trim();
+    const replies = sets.map((set, i) => ({
+      eventId: set.dataset.event,
+      attending: fields.get(`attending-${set.dataset.event}`) === "yes",
+      partyCount,
+      // The note goes with the first reply only, so the couple doesn't see it on every event.
+      note: i === 0 ? note : (data.rsvp(set.dataset.event)?.note ?? ""),
+    }));
+    if (await busy(form, "Sending…", () => data.sendRSVPs(replies))) location.hash = "#/sent/all";
+  }
   if (form.id === "give-form") {
     const item = form.dataset.item;
     const preset = fields.get("preset");
@@ -617,6 +719,11 @@ main.addEventListener("submit", async (e) => {
 main.addEventListener("change", (e) => {
   if (e.target.name === "attending") {
     main.querySelector("#party-field").hidden = e.target.value !== "yes";
+  }
+  if (e.target.name?.startsWith("attending-")) {
+    e.target.closest("fieldset").querySelector(".field-error").hidden = true;
+    const party = main.querySelector("#party-field");
+    if (party) party.hidden = !main.querySelector('input[name^="attending-"][value="yes"]:checked');
   }
   if (e.target.dataset.href) location.hash = e.target.dataset.href;
   if (e.target.name === "preset") {

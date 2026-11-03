@@ -65,6 +65,14 @@ export const data = {
     await this.load();
   },
 
+  /** Several replies at once (the "RSVP to everything" page), then one reload. */
+  async sendRSVPs(replies) {
+    for (const r of replies) {
+      await call("guest_rsvp", { code, event: r.eventId, attending: r.attending, party_count: r.partyCount, note: r.note });
+    }
+    await this.load();
+  },
+
   async ask(text, eventId) {
     await call("guest_ask", { code, question: text, event: eventId || null });
     await this.load();
