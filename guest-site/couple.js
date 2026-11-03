@@ -112,6 +112,57 @@ const field = (id, label, input, helper = "") => `
     ${helper ? `<span class="helper">${helper}</span>` : ""}
   </div>`;
 
+/** The checklist shown after importing contacts: everyone ticked, people already invited greyed out. */
+function pickList(names) {
+  const taken = new Set(state.guests.map((g) => g.name.toLowerCase()));
+  const seen = new Set();
+  const list = [];
+  for (const name of names) {
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    list.push({ name, already: taken.has(key) });
+  }
+  const fresh = list.filter((x) => !x.already).length;
+  return `
+    <form class="stack-sm" id="bulk-form">
+      <div class="pick-top">
+        <span class="headline">Who are you inviting?</span>
+        ${fresh ? '<button class="link-button" type="button" data-action="pick-all">Untick all</button>' : ""}
+      </div>
+      <div class="pick-list">
+        ${list.map((x) => `
+          <label class="check">
+            <input type="checkbox" name="pick" value="${esc(x.name)}" ${x.already ? "disabled" : "checked"}>
+            <span>${esc(x.name)}${x.already ? ' <span class="footnote secondary">· already on your list</span>' : ""}</span>
+          </label>`).join("")}
+      </div>
+      <button class="button primary" type="submit">${addLabel(fresh)}</button>
+      <button class="button tertiary" type="button" data-action="bulk-cancel">Cancel</button>
+    </form>`;
+}
+
+/** Keeps the checklist's button count and "Tick all / Untick all" in step with the boxes. */
+function updatePick() {
+  const boxes = [...main.querySelectorAll('input[name="pick"]:not(:disabled)')];
+  const ticked = boxes.filter((b) => b.checked).length;
+  const submit = main.querySelector('#bulk-form button[type="submit"]');
+  submit.textContent = addLabel(ticked);
+  submit.disabled = !ticked;
+  const all = main.querySelector('[data-action="pick-all"]');
+  if (all) all.textContent = ticked ? "Untick all" : "Tick all";
+}
+
+const addLabel = (n) => n ? `Add ${count(n, "guest")}` : "Tick at least one person";
+
+/** The box for typing or pasting names, one per line. */
+const pasteForm = () => `
+  <form class="stack-sm" id="paste-form">
+    ${field("bulk-names", "Names, one per line", '<textarea id="bulk-names" name="names" rows="6" placeholder="Jessica Avery\nMarcus Lee\nRosa Diaz"></textarea>')}
+    <button class="button primary" type="submit">Next</button>
+    <button class="button tertiary" type="button" data-action="bulk-cancel">Cancel</button>
+  </form>`;
+
 // ---------- Signed out ----------
 
 const pagesSignedOut = {
@@ -592,24 +643,27 @@ const pages = {
     const people = state.guests.reduce((sum, g) => sum + g.party_size, 0);
     return `
       ${header("Guests", state.guests.length ? `${count(state.guests.length, "invitation")} · up to ${count(people, "person", "people")}` : "Everyone you’re inviting")}
-      <form class="panel stack-sm" id="guest-form">
-        <h2 class="headline">Add a guest</h2>
-        <div class="two-up wide-first">
-          ${field("guest-name", "Name", '<input id="guest-name" name="name" placeholder="Guest’s full name" required>')}
-          ${field("party", "Party size", '<input id="party" name="party" type="number" min="1" max="20" value="1" required>', "Including plus-ones")}
-        </div>
-        <button class="button primary" type="submit">Add guest</button>
-      </form>
-      <details class="panel bulk">
-        <summary class="headline">Add many at once</summary>
-        <form class="stack-sm" id="bulk-form">
-          ${field("contacts-file", "Contacts file (optional)", '<input id="contacts-file" type="file" accept=".vcf,.csv,.txt,text/vcard,text/x-vcard,text/csv">',
-            "On a Mac: in Contacts, select people, then File → Export → Export vCard. In Google Contacts: Export → vCard.")}
-          ${field("bulk-names", "Names, one per line", '<textarea id="bulk-names" name="names" rows="6" placeholder="Jessica Avery\nMarcus Lee\nRosa Diaz"></textarea>',
-            "Names from your file show up here. Remove anyone you’re not inviting.")}
-          <button class="button primary" type="submit">Add these guests</button>
+      <section class="panel stack-sm" aria-labelledby="add-title">
+        <h2 class="headline" id="add-title">Add guests</h2>
+        <form class="stack-sm" id="guest-form">
+          <div class="two-up wide-first">
+            ${field("guest-name", "Name", '<input id="guest-name" name="name" placeholder="Guest’s full name" autocomplete="off" required>')}
+            ${field("party", "Party size", `<select id="party" name="party">${Array.from({ length: 10 }, (_, i) => `<option value="${i + 1}">${i === 0 ? "1" : `${i + 1} (+${i})`}</option>`).join("")}</select>`)}
+          </div>
+          <button class="button primary" type="submit">Add guest</button>
         </form>
-      </details>
+        <div class="or-line" aria-hidden="true"><span>or add many</span></div>
+        <input id="contacts-file" class="visually-hidden" type="file" accept=".vcf,.csv,.txt,text/vcard,text/x-vcard,text/csv" aria-label="Import a contacts file">
+        <div class="two-up">
+          <label class="button secondary" for="contacts-file">${icon(icons.person, 20)}Import contacts</label>
+          <button class="button secondary" type="button" data-action="paste-list">Paste a list</button>
+        </div>
+        <details class="how">
+          <summary class="footnote secondary">How do I get a contacts file?</summary>
+          <p class="footnote secondary"><b>Mac:</b> open Contacts, select the people, then File → Export → Export vCard.<br><b>Google:</b> open contacts.google.com, select people, then Export → vCard.</p>
+        </details>
+        <div id="bulk"></div>
+      </section>
       ${state.guests.length ? `<div class="row-group">${state.guests.map((g) => row({
         href: `#/guest/${g.id}`, title: esc(g.name), iconPath: icons.person,
         subtitle: `Party of ${g.party_size} · ${guestReplies(g)}`,
@@ -981,17 +1035,15 @@ main.addEventListener("submit", async (e) => {
     }
   }
 
+  if (form.id === "paste-form") {
+    const names = String(fields.get("names")).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (!names.length) { main.querySelector("#bulk-names").focus(); return; }
+    main.querySelector("#bulk").innerHTML = pickList(names);
+  }
+
   if (form.id === "bulk-form") {
-    const taken = new Set(state.guests.map((g) => g.name.toLowerCase()));
-    const names = [];
-    for (const line of String(fields.get("names")).split(/\r?\n/)) {
-      const name = line.trim();
-      if (name && !taken.has(name.toLowerCase())) { taken.add(name.toLowerCase()); names.push(name); }
-    }
-    if (!names.length) {
-      showError(form, { message: "Add at least one new name. Guests already on your list are skipped." });
-      return;
-    }
+    const names = fields.getAll("pick").map(String);
+    if (!names.length) return;
     if (await busy(form, "Adding…", () => data.addGuests(names))) {
       go("#/guests", `Added ${count(names.length, "guest")}. Each one has their own invite link.`);
     }
@@ -1034,14 +1086,14 @@ main.addEventListener("change", async (e) => {
     main.querySelector("#bought-field").hidden = fund;
   }
   if (target.id === "contacts-file" && target.files[0]) {
-    const box = main.querySelector("#bulk-names");
+    const bulk = main.querySelector("#bulk");
     const names = contactNames(await target.files[0].text());
-    const form = target.form;
-    form.querySelector(".form-error")?.remove();
-    if (!names.length) { showError(form, { message: "No names found in that file. Try a vCard (.vcf) or CSV file." }); return; }
-    box.value = [box.value.trim(), ...names].filter(Boolean).join("\n");
-    box.focus();
+    target.value = "";
+    bulk.innerHTML = names.length ? pickList(names)
+      : '<p class="panel warning subheadline" role="alert">No names found in that file. Try a vCard (.vcf) or CSV file.</p>';
+    bulk.scrollIntoView({ behavior: "smooth", block: "start" });
   }
+  if (target.name === "pick") updatePick();
   if (target.name === "rsvp") {
     const required = target.value === "yes";
     main.querySelector("#deadline-field").hidden = !required;
@@ -1078,6 +1130,20 @@ main.addEventListener("click", async (e) => {
   };
 
   switch (button.dataset.action) {
+    case "paste-list":
+      main.querySelector("#bulk").innerHTML = pasteForm();
+      main.querySelector("#bulk-names").focus();
+      return;
+    case "bulk-cancel":
+      main.querySelector("#bulk").innerHTML = "";
+      return;
+    case "pick-all": {
+      const boxes = [...main.querySelectorAll('input[name="pick"]:not(:disabled)')];
+      const tick = !boxes.some((b) => b.checked);
+      boxes.forEach((b) => { b.checked = tick; });
+      updatePick();
+      return;
+    }
     case "sign-out":
       data.signOut();
       location.hash = "#/signin";
