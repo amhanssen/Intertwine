@@ -502,7 +502,7 @@ const pages = {
       <div class="stats">
         <div class="stat hero" ${w.photo_url ? `style="background-image:url('${esc(w.photo_url)}')"` : ""}>
           <input id="hero-photo" class="visually-hidden" type="file" accept="image/*">
-          <label class="hero-photo" for="hero-photo">${icon(icons.camera, 18)}<span>${w.photo_url ? "Change photo" : "Add a photo"}</span></label>
+          <label class="hero-photo" for="hero-photo" title="${w.photo_url ? "Change photo" : "Add a photo"}">${icon(icons.camera, 20)}<span class="visually-hidden">${w.photo_url ? "Change photo" : "Add a photo"}</span></label>
           <span class="number">${Math.abs(days)}</span>
           <span class="subheadline">${days >= 0 ? `${noun(days, "day")} until “I do”` : `${noun(-days, "day")} since “I do”`}</span>
         </div>
@@ -1123,13 +1123,16 @@ main.addEventListener("change", async (e) => {
   }
   if (target.id === "hero-photo" && target.files[0]) {
     // A photo behind the countdown: it's the couple photo guests also see.
-    const label = main.querySelector(".hero-photo span");
+    const button = main.querySelector(".hero-photo");
+    const label = button.querySelector("span");
+    button.classList.add("busy");
     label.textContent = "Uploading…";
     try {
       await data.saveWedding({}, target.files[0]);
       render();
       note("Photo added. Guests see it on their invite too.");
     } catch (error) {
+      button.classList.remove("busy");
       label.textContent = "Try again";
       showError(main.querySelector(".stats"), error);
     }
