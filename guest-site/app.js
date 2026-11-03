@@ -213,6 +213,16 @@ function sentAll() {
 
 // ---------- Pages ----------
 
+/** The couple's mood board for an event: square photos, three across. Each opens full size when `links` is true. */
+function moodBoard(event, links) {
+  const photos = event.moodPhotos ?? [];
+  if (!photos.length) return "";
+  const img = (url) => `<img src="${esc(url)}" alt="" loading="lazy">`;
+  return `<div class="mood-grid">${photos.map((url) => links
+    ? `<a href="${esc(url)}" target="_blank" rel="noopener" aria-label="Open mood board photo">${img(url)}</a>`
+    : img(url)).join("")}</div>`;
+}
+
 const pages = {
   // GH1 · Home
   home() {
@@ -334,6 +344,7 @@ const pages = {
         <h2 class="title3">What to wear</h2>
         <p>${esc(event.dressCode)}</p>
         ${event.dressGuidance ? `<p class="subheadline secondary">${esc(event.dressGuidance)}</p>` : ""}
+        ${moodBoard(event, true)}
       </section>
 
       <div class="row-group">
@@ -399,7 +410,7 @@ const pages = {
       <a class="button tertiary" href="#/schedule">Back to schedule</a>`;
   },
 
-  // GW1 · Dress codes
+  // GW1 · Dress codes (the mood board photos tap through to the event)
   wear() {
     return `
       <header class="stack">
@@ -411,6 +422,7 @@ const pages = {
           <span class="footnote secondary">${dayLong(e.day)} · ${esc(e.name)}</span>
           <span class="title3">${esc(e.dressCode)}</span>
           ${e.dressGuidance ? `<span class="subheadline secondary">${esc(e.dressGuidance)}</span>` : ""}
+          ${moodBoard(e, false)}
         </a>`).join("")}`;
   },
 

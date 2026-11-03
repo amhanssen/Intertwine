@@ -244,9 +244,11 @@ export const data = {
     await this.load();
   },
 
-  /** Adds or changes an event; returns its id. */
-  async saveEvent(id, fields, photo) {
+  /** Adds or changes an event; returns its id. `mood` is the mood board when it changed:
+   *  addresses of photos already saved, and newly picked files to upload. */
+  async saveEvent(id, fields, photo, mood) {
     if (photo) fields.photo_url = await uploadPhoto(photo);
+    if (mood) fields.mood_photos = await Promise.all(mood.map((m) => (typeof m === "string" ? m : uploadPhoto(m))));
     if (id) await update("events", id, fields);
     else id = (await insert("events", { ...fields, wedding_id: state.wedding.id })).id;
     await this.load();

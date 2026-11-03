@@ -58,6 +58,8 @@ const icons = {
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
   link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
   rings: '<circle cx="9" cy="13" r="5"/><circle cx="15" cy="13" r="5"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  close: '<path d="M6 6l12 12M18 6 6 18"/>',
   camera: '<path d="M4 8h3l1.5-2.5h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
   sparkle: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/>',
 };
@@ -401,6 +403,7 @@ function previewHTML(e, photo) {
         <h3 class="title3">What to wear</h3>
         <p>${esc(e.dress_code)}</p>
         ${e.dress_guidance ? `<p class="subheadline secondary">${esc(e.dress_guidance)}</p>` : ""}
+        ${moodGrid(e.mood_photos)}
       </section>
     </div>`;
 }
@@ -455,6 +458,49 @@ function markErrors(form, errors) {
   return !first;
 }
 
+// ---------- Mood board ----------
+
+const MOOD_MAX = 9;
+// Photos picked for the mood board but not saved yet, by tile id.
+const moodFiles = new Map();
+
+function moodTile(src, attrs) {
+  return `
+    <div class="mood-tile" ${attrs}>
+      <img src="${esc(src)}" alt="">
+      <button type="button" data-action="mood-remove" aria-label="Remove photo">${icon(icons.close, 16)}</button>
+    </div>`;
+}
+
+/** The mood board editor in the event form's "What to wear" step. */
+function moodField(urls) {
+  moodFiles.clear();
+  return `
+    <div class="field">
+      <span class="label">Mood board (optional)</span>
+      <div class="mood-grid" id="mood-grid">
+        ${urls.map((url) => moodTile(url, `data-url="${esc(url)}"`)).join("")}
+        <label class="mood-add" for="mood-input" ${urls.length >= MOOD_MAX ? "hidden" : ""}>${icon(icons.plus, 24)}<span>Add photos</span></label>
+      </div>
+      <input id="mood-input" class="visually-hidden" type="file" accept="image/*" multiple>
+      <span class="helper">Outfits, colors or a feeling. Guests see these with the dress code. Up to ${MOOD_MAX}.</span>
+    </div>`;
+}
+
+const moodTiles = (form) => [...form.querySelectorAll(".mood-tile")];
+/** The board in order: saved photo addresses and newly picked files. */
+const moodBoard = (form) => moodTiles(form).map((t) => t.dataset.url ?? moodFiles.get(t.dataset.new));
+const moodPreview = (form) => moodTiles(form).map((t) => t.querySelector("img").src);
+
+function updateMoodAdd(form) {
+  form.querySelector(".mood-add").hidden = moodTiles(form).length >= MOOD_MAX;
+}
+
+/** Mood board photos as guests see them. */
+function moodGrid(urls) {
+  return urls?.length ? `<div class="mood-grid">${urls.map((u) => `<img src="${esc(u)}" alt="" loading="lazy">`).join("")}</div>` : "";
+}
+
 function showStep(form, step) {
   const published = form.dataset.published === "true";
   const e = eventFields(form);
@@ -466,7 +512,7 @@ function showStep(form, step) {
   document.title = `${title.textContent} · Intertwine`;
   main.querySelector("#step-name").textContent = `Step ${step} of 5 · ${stepNames[step - 1]}`;
   main.querySelector("#step-bar").style.width = `${step * 20}%`;
-  if (step === 4) form.querySelector("#preview").innerHTML = previewHTML(e, previewPhoto(form));
+  if (step === 4) form.querySelector("#preview").innerHTML = previewHTML({ ...e, mood_photos: moodPreview(form) }, previewPhoto(form));
   if (step === 5) form.querySelector("#review").innerHTML = reviewHTML(e, published);
   form.querySelector("#step-buttons").innerHTML = stepButtons(step, published, !data.missing(e).length);
   form.querySelector(".form-error")?.remove();
@@ -591,6 +637,7 @@ const pages = {
         <h2 class="title3">Dress code</h2>
         <p>${esc(e.dress_code)}</p>
         ${e.dress_guidance ? `<p class="subheadline secondary">${esc(e.dress_guidance)}</p>` : ""}
+        ${moodGrid(e.mood_photos)}
       </section>
       ${e.status === "published" ? '<button class="button tertiary" type="button" data-action="unpublish">Hide from guests (back to draft)</button>' : ""}
       <button class="button tertiary danger" type="button" data-action="delete-event">Delete event</button>`;
@@ -639,6 +686,7 @@ const pages = {
           <h2 class="title3">What to wear</h2>
           ${field("dress", "Dress code", `<select id="dress" name="dress">${options(dressCodes, e.dress_code)}</select>`)}
           ${field("guidance", "Guidance for guests (optional)", `<textarea id="guidance" name="guidance" placeholder="Dresses or suits; comfortable shoes welcome.">${esc(e.dress_guidance)}</textarea>`)}
+          ${moodField(e.mood_photos ?? [])}
           <h2 class="title3">RSVP</h2>
           <div class="segmented" role="radiogroup" aria-label="RSVP">
             <label><input type="radio" name="rsvp" value="yes" ${e.rsvp_required ? "checked" : ""}><span>RSVP required</span></label>
@@ -1057,9 +1105,11 @@ main.addEventListener("submit", async (e) => {
     if (!row.name) { showStep(form, 1); markErrors(form, stepErrors(form, 1)); return; }
     if (publishing) row.status = "published";
     const photo = fields.get("photo");
+    // Only send the mood board when it changed (older databases don't have it yet).
+    const mood = form.dataset.moodChanged ? moodBoard(form) : null;
     let id = form.dataset.id;
     if (await busy(form, publishing && !wasPublished ? "Publishing…" : "Saving…", async () => {
-      id = await data.saveEvent(id || null, row, photo?.size ? photo : null);
+      id = await data.saveEvent(id || null, row, photo?.size ? photo : null, mood);
     })) {
       if (!publishing) go(`#/event/${id}`, "Saved as a draft. Guests can’t see it until you publish.");
       else if (wasPublished) go(`#/event/${id}`, "Changes saved. Guests see them right away.");
@@ -1131,6 +1181,19 @@ main.addEventListener("change", async (e) => {
     bulk.innerHTML = names.length ? pickList(names)
       : '<p class="panel warning subheadline" role="alert">No names found in that file. Try a vCard (.vcf) or CSV file.</p>';
     bulk.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  if (target.id === "mood-input" && target.files.length) {
+    const form = target.form;
+    const room = MOOD_MAX - moodTiles(form).length;
+    const add = form.querySelector(".mood-add");
+    for (const file of [...target.files].slice(0, room)) {
+      const key = crypto.randomUUID();
+      moodFiles.set(key, file);
+      add.insertAdjacentHTML("beforebegin", moodTile(URL.createObjectURL(file), `data-new="${key}"`));
+    }
+    target.value = "";
+    form.dataset.moodChanged = "true";
+    updateMoodAdd(form);
   }
   if (target.id === "hero-photo" && target.files[0]) {
     // A photo behind the countdown (the couple photo guests also see). It shows here first
@@ -1227,6 +1290,15 @@ main.addEventListener("click", async (e) => {
   };
 
   switch (button.dataset.action) {
+    case "mood-remove": {
+      const form = button.form;
+      const tile = button.closest(".mood-tile");
+      moodFiles.delete(tile.dataset.new);
+      tile.remove();
+      form.dataset.moodChanged = "true";
+      updateMoodAdd(form);
+      return;
+    }
     case "move-cancel":
       pendingPhoto = null;
       render();

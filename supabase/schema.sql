@@ -91,6 +91,9 @@ create table if not exists registry_items (
 );
 -- Added later; "if not exists" keeps re-runs safe. For a cash fund, price is the goal.
 alter table registry_items add column if not exists link text not null default '';
+-- Mood board: photo addresses for an event's "What to wear" (the app doesn't send this column,
+-- so its sync leaves the board alone).
+alter table events add column if not exists mood_photos text[] not null default '{}';
 alter table registry_items add column if not exists note text not null default '';
 
 -- Who gave what: a guest's "I'll get this", or what they put toward a cash fund.
@@ -229,7 +232,8 @@ begin
         'day', e.day, 'start', to_char(e.start_time, 'HH24:MI'), 'end', to_char(e.end_time, 'HH24:MI'),
         'venue', e.venue, 'directions', e.directions,
         'dressCode', e.dress_code, 'dressGuidance', e.dress_guidance,
-        'rsvpRequired', e.rsvp_required, 'rsvpDeadline', e.rsvp_deadline, 'photo', e.photo_url)
+        'rsvpRequired', e.rsvp_required, 'rsvpDeadline', e.rsvp_deadline, 'photo', e.photo_url,
+        'moodPhotos', e.mood_photos)
         order by e.day, e.start_time)
       from events e where e.wedding_id = g.wedding_id and e.status = 'published'), '[]'),
     'rsvps', coalesce((select json_object_agg(r.event_id, json_build_object(
