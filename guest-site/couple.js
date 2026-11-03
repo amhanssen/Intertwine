@@ -348,6 +348,8 @@ function eventFields(form) {
     venue: text(fields, "venue"), directions: text(fields, "directions"),
     dress_code: text(fields, "dress"), dress_guidance: text(fields, "guidance"),
     rsvp_required: rsvp, rsvp_deadline: rsvp ? optionalDate(fields, "deadline") : null,
+    // Only sent when it changed, so saving still works before the database has this column.
+    ...(form.elements.board.value !== form.elements.board.defaultValue && { mood_link: boardLink(form.elements.board.value) }),
   };
 }
 
@@ -404,6 +406,7 @@ function previewHTML(e, photo) {
         <p>${esc(e.dress_code)}</p>
         ${e.dress_guidance ? `<p class="subheadline secondary">${esc(e.dress_guidance)}</p>` : ""}
         ${moodGrid(e.mood_photos)}
+        ${boardButton(e.mood_link)}
       </section>
     </div>`;
 }
@@ -487,6 +490,20 @@ function moodField(urls) {
     </div>`;
 }
 
+/** A pasted board address, made into a full link ("pinterest.com/…" gets https:// in front). */
+function boardLink(value) {
+  const v = value.trim();
+  if (!v) return "";
+  return /^https?:\/\//i.test(v) ? v : `https://${v}`;
+}
+
+/** "See the Pinterest board" for a Pinterest link, otherwise "See more ideas". */
+function boardButton(url) {
+  if (!/^https?:\/\//i.test(url ?? "")) return "";
+  const label = /pinterest\.|pin\.it/i.test(url) ? "See the Pinterest board" : "See more ideas";
+  return `<a class="link-button" href="${esc(url)}" target="_blank" rel="noopener">${label}</a>`;
+}
+
 const moodTiles = (form) => [...form.querySelectorAll(".mood-tile")];
 /** The board in order: saved photo addresses and newly picked files. */
 const moodBoard = (form) => moodTiles(form).map((t) => t.dataset.url ?? moodFiles.get(t.dataset.new));
@@ -512,7 +529,7 @@ function showStep(form, step) {
   document.title = `${title.textContent} · Intertwine`;
   main.querySelector("#step-name").textContent = `Step ${step} of 5 · ${stepNames[step - 1]}`;
   main.querySelector("#step-bar").style.width = `${step * 20}%`;
-  if (step === 4) form.querySelector("#preview").innerHTML = previewHTML({ ...e, mood_photos: moodPreview(form) }, previewPhoto(form));
+  if (step === 4) form.querySelector("#preview").innerHTML = previewHTML({ ...e, mood_photos: moodPreview(form), mood_link: boardLink(form.elements.board.value) }, previewPhoto(form));
   if (step === 5) form.querySelector("#review").innerHTML = reviewHTML(e, published);
   form.querySelector("#step-buttons").innerHTML = stepButtons(step, published, !data.missing(e).length);
   form.querySelector(".form-error")?.remove();
@@ -638,6 +655,7 @@ const pages = {
         <p>${esc(e.dress_code)}</p>
         ${e.dress_guidance ? `<p class="subheadline secondary">${esc(e.dress_guidance)}</p>` : ""}
         ${moodGrid(e.mood_photos)}
+        ${boardButton(e.mood_link)}
       </section>
       ${e.status === "published" ? '<button class="button tertiary" type="button" data-action="unpublish">Hide from guests (back to draft)</button>' : ""}
       <button class="button tertiary danger" type="button" data-action="delete-event">Delete event</button>`;
@@ -687,6 +705,7 @@ const pages = {
           ${field("dress", "Dress code", `<select id="dress" name="dress">${options(dressCodes, e.dress_code)}</select>`)}
           ${field("guidance", "Guidance for guests (optional)", `<textarea id="guidance" name="guidance" placeholder="Dresses or suits; comfortable shoes welcome.">${esc(e.dress_guidance)}</textarea>`)}
           ${moodField(e.mood_photos ?? [])}
+          ${field("board", "Pinterest board (optional)", `<input id="board" name="board" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="pinterest.com/you/our-wedding" value="${esc(e.mood_link ?? "")}">`, "In Pinterest, open your board, tap Share, then Copy link and paste it here.")}
           <h2 class="title3">RSVP</h2>
           <div class="segmented" role="radiogroup" aria-label="RSVP">
             <label><input type="radio" name="rsvp" value="yes" ${e.rsvp_required ? "checked" : ""}><span>RSVP required</span></label>

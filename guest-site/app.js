@@ -223,6 +223,14 @@ function moodBoard(event, links) {
     : img(url)).join("")}</div>`;
 }
 
+/** A button to the couple's Pinterest board (or other page of ideas) for an event. */
+function boardButton(event) {
+  const url = event.moodLink ?? "";
+  if (!/^https?:\/\//i.test(url)) return "";
+  const label = /pinterest\.|pin\.it/i.test(url) ? "See the Pinterest board" : "See more ideas";
+  return `<a class="link-button" href="${esc(url)}" target="_blank" rel="noopener">${label}</a>`;
+}
+
 const pages = {
   // GH1 · Home
   home() {
@@ -345,6 +353,7 @@ const pages = {
         <p>${esc(event.dressCode)}</p>
         ${event.dressGuidance ? `<p class="subheadline secondary">${esc(event.dressGuidance)}</p>` : ""}
         ${moodBoard(event, true)}
+        ${boardButton(event)}
       </section>
 
       <div class="row-group">
@@ -418,12 +427,15 @@ const pages = {
         <p class="subheadline secondary">Dress codes for every event you’re invited to</p>
       </header>
       ${data.events().map((e) => `
+        <div class="stack">
         <a class="panel" href="#/event/${e.id}" style="text-decoration:none">
           <span class="footnote secondary">${dayLong(e.day)} · ${esc(e.name)}</span>
           <span class="title3">${esc(e.dressCode)}</span>
           ${e.dressGuidance ? `<span class="subheadline secondary">${esc(e.dressGuidance)}</span>` : ""}
           ${moodBoard(e, false)}
-        </a>`).join("")}`;
+        </a>
+        ${boardButton(e)}
+        </div>`).join("")}`;
   },
 
   // Old links to the Details page open Home, where the details are now.

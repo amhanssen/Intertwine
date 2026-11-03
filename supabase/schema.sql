@@ -94,6 +94,8 @@ alter table registry_items add column if not exists link text not null default '
 -- Mood board: photo addresses for an event's "What to wear" (the app doesn't send this column,
 -- so its sync leaves the board alone).
 alter table events add column if not exists mood_photos text[] not null default '{}';
+-- A link to the couple's own Pinterest board (or any page of ideas) for that event.
+alter table events add column if not exists mood_link text not null default '';
 alter table registry_items add column if not exists note text not null default '';
 
 -- Who gave what: a guest's "I'll get this", or what they put toward a cash fund.
@@ -233,7 +235,7 @@ begin
         'venue', e.venue, 'directions', e.directions,
         'dressCode', e.dress_code, 'dressGuidance', e.dress_guidance,
         'rsvpRequired', e.rsvp_required, 'rsvpDeadline', e.rsvp_deadline, 'photo', e.photo_url,
-        'moodPhotos', e.mood_photos)
+        'moodPhotos', e.mood_photos, 'moodLink', e.mood_link)
         order by e.day, e.start_time)
       from events e where e.wedding_id = g.wedding_id and e.status = 'published'), '[]'),
     'rsvps', coalesce((select json_object_agg(r.event_id, json_build_object(
