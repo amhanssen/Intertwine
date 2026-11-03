@@ -418,6 +418,8 @@ a.stat:hover { border-color: var(--border-default); }
   border: 1.5px dashed var(--border-default); color: var(--text-secondary); font-size: 13px; cursor: pointer;
 }
 .mood-add[hidden] { display: none; }
+.pin-board { min-height: 1px; overflow: hidden; border-radius: var(--radius-md); }
+.pin-board > span { max-width: 100%; }
 .two-up.wide-first { grid-template-columns: 2fr 1fr; }
 @media (max-width: 380px) { .two-up:not(.wide-first) { grid-template-columns: 1fr; } }
 

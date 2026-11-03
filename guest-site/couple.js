@@ -705,7 +705,8 @@ const pages = {
           ${field("dress", "Dress code", `<select id="dress" name="dress">${options(dressCodes, e.dress_code)}</select>`)}
           ${field("guidance", "Guidance for guests (optional)", `<textarea id="guidance" name="guidance" placeholder="Dresses or suits; comfortable shoes welcome.">${esc(e.dress_guidance)}</textarea>`)}
           ${moodField(e.mood_photos ?? [])}
-          ${field("board", "Pinterest board (optional)", `<input id="board" name="board" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="pinterest.com/you/our-wedding" value="${esc(e.mood_link ?? "")}">`, "In Pinterest, open your board, tap Share, then Copy link and paste it here.")}
+          ${field("board", "Pinterest board (optional)", `<input id="board" name="board" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="pinterest.com/you/our-wedding" value="${esc(e.mood_link ?? "")}" aria-describedby="board-short">`, "Paste the board’s address, like pinterest.com/you/our-wedding, and guests see a preview of it.")}
+          <p class="panel warning subheadline" id="board-short" ${/pin\.it/i.test(e.mood_link ?? "") ? "" : "hidden"}>This short link opens the board, but can’t show guests a preview. For a preview, open the board on pinterest.com in a browser and copy the address from the top of the page.</p>
           <h2 class="title3">RSVP</h2>
           <div class="segmented" role="radiogroup" aria-label="RSVP">
             <label><input type="radio" name="rsvp" value="yes" ${e.rsvp_required ? "checked" : ""}><span>RSVP required</span></label>
@@ -1200,6 +1201,9 @@ main.addEventListener("change", async (e) => {
     bulk.innerHTML = names.length ? pickList(names)
       : '<p class="panel warning subheadline" role="alert">No names found in that file. Try a vCard (.vcf) or CSV file.</p>';
     bulk.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  if (target.id === "board") {
+    target.form.querySelector("#board-short").hidden = !/pin\.it/i.test(target.value);
   }
   if (target.id === "mood-input" && target.files.length) {
     const form = target.form;

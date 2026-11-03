@@ -126,7 +126,7 @@ function calendarButtons(event) {
   if (!event.day || !event.start) return "";
   return `
     <div class="button-row">
-      <a class="button secondary" href="${calendarFile(event)}" download="${esc(event.name)}.ics">${icon(icons.calendar, 20)}Add to calendar</a>
+      <button class="button secondary" type="button" data-ics="${esc(event.id)}">${icon(icons.calendar, 20)}Add to calendar</button>
       <a class="button tertiary" href="${googleCalendarLink(event)}" target="_blank" rel="noopener">Google Calendar</a>
     </div>`;
 }
@@ -221,6 +221,31 @@ function moodBoard(event, links) {
   return `<div class="mood-grid">${photos.map((url) => links
     ? `<a href="${esc(url)}" target="_blank" rel="noopener" aria-label="Open mood board photo">${img(url)}</a>`
     : img(url)).join("")}</div>`;
+}
+
+/** A full Pinterest board address (pinterest.com/name/board), which can show a preview.
+ *  Short pin.it links can't, so those only get the button. */
+const pinterestBoard = (url) => /^https:\/\/([a-z]+\.)?pinterest\.[a-z.]+\/[^/?#]+\/[^/?#]+/i.test(url ?? "");
+
+/** A live preview of the couple's Pinterest board, filled in by Pinterest's script (see showPinterest). */
+function boardPreview(event) {
+  if (!pinterestBoard(event.moodLink)) return "";
+  return `<div class="pin-board"><a data-pin-do="embedBoard" data-pin-scale-height="260" data-pin-scale-width="80" href="${esc(event.moodLink)}"></a></div>`;
+}
+
+let pinterestScript = null;
+/** Loads Pinterest's board script once, then turns the board links on this page into previews. */
+function showPinterest() {
+  const boards = main.querySelectorAll("[data-pin-do]");
+  if (!boards.length) return;
+  // Pinterest adds 20px of its own around the board.
+  boards.forEach((a) => a.setAttribute("data-pin-board-width", String(Math.floor(a.parentElement.clientWidth) - 20)));
+  pinterestScript ??= new Promise((resolve, reject) => {
+    const script = Object.assign(document.createElement("script"), { src: "https://assets.pinterest.com/js/pinit.js", async: true, onload: resolve, onerror: reject });
+    script.dataset.pinBuild = "buildPinterest";
+    document.head.append(script);
+  });
+  pinterestScript.then(() => window.buildPinterest?.(), () => { pinterestScript = null; });
 }
 
 /** A button to the couple's Pinterest board (or other page of ideas) for an event. */
@@ -353,6 +378,7 @@ const pages = {
         <p>${esc(event.dressCode)}</p>
         ${event.dressGuidance ? `<p class="subheadline secondary">${esc(event.dressGuidance)}</p>` : ""}
         ${moodBoard(event, true)}
+        ${boardPreview(event)}
         ${boardButton(event)}
       </section>
 
@@ -612,29 +638,52 @@ function notFound() {
 /** Calendar files need commas, semicolons and line breaks escaped. */
 const icsText = (text) => String(text ?? "").replace(/[\\;,]/g, (c) => `\\${c}`).replace(/\n/g, "\\n");
 
+/** Start and end as calendar times ("20270612T190000"). Without an end it lasts 2 hours; an end
+ *  earlier than the start means it ends after midnight. */
+function calendarTimes(event) {
+  const at = (day, t) => new Date(`${day}T${t}:00`);
+  const start = at(event.day, event.start);
+  let end = event.end ? at(event.day, event.end) : new Date(start.getTime() + 2 * 3600_000);
+  if (end <= start) end = new Date(end.getTime() + 24 * 3600_000);
+  const pad = (n) => String(n).padStart(2, "0");
+  const stamp = (d) => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
+  return [stamp(start), stamp(end)];
+}
+
 /** A calendar file for the event, so guests can add it to Apple, Google or Outlook calendars. */
 function calendarFile(event) {
-  const stamp = (day, t) => `${day.replaceAll("-", "")}T${t.replace(":", "")}00`;
+  const [start, end] = calendarTimes(event);
   const ics = [
     "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Intertwine//Guest site//EN", "BEGIN:VEVENT",
     `UID:${event.id}@intertwine`,
-    `DTSTART:${stamp(event.day, event.start)}`,
-    `DTEND:${stamp(event.day, event.end ?? event.start)}`,
+    `DTSTART:${start}`,
+    `DTEND:${end}`,
     `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").slice(0, 15)}Z`,
     `SUMMARY:${icsText(`${event.name} · ${couple()}`)}`,
     `LOCATION:${icsText(event.venue)}`,
     `DESCRIPTION:${icsText(`Dress code: ${event.dressCode}`)}`,
     "END:VEVENT", "END:VCALENDAR",
   ].join("\r\n");
-  return `data:text/calendar;charset=utf-8,${encodeURIComponent(ics)}`;
+  return new File([ics], `${event.name.replace(/[\\/:*?"<>|]/g, "")}.ics`, { type: "text/calendar" });
+}
+
+/** Opens the calendar file: iPhones offer "Add to Calendar", computers download it. */
+function addToCalendar(event) {
+  const file = calendarFile(event);
+  const url = URL.createObjectURL(file);
+  const link = Object.assign(document.createElement("a"), { href: url, download: file.name });
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 function googleCalendarLink(event) {
-  const stamp = (day, t) => `${day.replaceAll("-", "")}T${t.replace(":", "")}00`;
+  const [start, end] = calendarTimes(event);
   const params = new URLSearchParams({
     action: "TEMPLATE",
     text: `${event.name} · ${couple()}`,
-    dates: `${stamp(event.day, event.start)}/${stamp(event.day, event.end ?? event.start)}`,
+    dates: `${start}/${end}`,
     location: event.venue,
     details: `Dress code: ${event.dressCode}`,
   });
@@ -651,6 +700,7 @@ function render() {
   const name = path || "home";
   const page = pages[name] ?? notFound;
   main.innerHTML = page(param);
+  showPinterest();
 
   const tab = tabs[name] ?? "home";
   document.querySelectorAll(".tabbar a[data-tab]").forEach((a) => {
@@ -764,6 +814,8 @@ main.addEventListener("change", (e) => {
 });
 
 main.addEventListener("click", async (e) => {
+  const ics = e.target.closest("[data-ics]");
+  if (ics) addToCalendar(data.event(ics.dataset.ics));
   if (e.target.id === "ungive") {
     e.target.disabled = true;
     try {
