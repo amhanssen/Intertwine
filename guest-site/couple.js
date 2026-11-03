@@ -58,6 +58,7 @@ const icons = {
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
   link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
   rings: '<circle cx="9" cy="13" r="5"/><circle cx="15" cy="13" r="5"/>',
+  camera: '<path d="M4 8h3l1.5-2.5h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
   sparkle: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/>',
 };
 
@@ -500,6 +501,8 @@ const pages = {
       </header>
       <div class="stats">
         <div class="stat hero" ${w.photo_url ? `style="background-image:url('${esc(w.photo_url)}')"` : ""}>
+          <input id="hero-photo" class="visually-hidden" type="file" accept="image/*">
+          <label class="hero-photo" for="hero-photo">${icon(icons.camera, 18)}<span>${w.photo_url ? "Change photo" : "Add a photo"}</span></label>
           <span class="number">${Math.abs(days)}</span>
           <span class="subheadline">${days >= 0 ? `${noun(days, "day")} until “I do”` : `${noun(-days, "day")} since “I do”`}</span>
         </div>
@@ -1117,6 +1120,19 @@ main.addEventListener("change", async (e) => {
     bulk.innerHTML = names.length ? pickList(names)
       : '<p class="panel warning subheadline" role="alert">No names found in that file. Try a vCard (.vcf) or CSV file.</p>';
     bulk.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  if (target.id === "hero-photo" && target.files[0]) {
+    // A photo behind the countdown: it's the couple photo guests also see.
+    const label = main.querySelector(".hero-photo span");
+    label.textContent = "Uploading…";
+    try {
+      await data.saveWedding({}, target.files[0]);
+      render();
+      note("Photo added. Guests see it on their invite too.");
+    } catch (error) {
+      label.textContent = "Try again";
+      showError(main.querySelector(".stats"), error);
+    }
   }
   if (target.name === "pick") updatePick();
   if (target.name === "rsvp") {

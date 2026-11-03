@@ -104,7 +104,7 @@ main {
 
 /* ---------- Type (Figma text styles) ---------- */
 
-.large-title, .title1, .title2, .title3 { font-family: var(--font-heading); margin: 0; letter-spacing: 0; }
+.large-title, .title1, .title2, .title3 { font-family: var(--font-heading); margin: 0; letter-spacing: 0; font-variant-numeric: lining-nums; }
 .large-title { font-size: 34px; line-height: 1.15; font-weight: 700; }
 .title1 { font-size: 28px; line-height: 1.2; font-weight: 700; }
 .title2 { font-size: 22px; line-height: 1.25; font-weight: 700; }
@@ -354,8 +354,18 @@ a.stat:hover { border-color: var(--border-default); }
   grid-column: 1 / -1; min-height: 140px; justify-content: flex-end;
   background: var(--bg-accent) center / cover; color: var(--text-on-accent); border-color: transparent;
 }
-.stat.hero[style] { color: #FFFDFB; box-shadow: inset 0 -120px 80px -40px rgb(0 0 0 / 0.55); }
+.stat.hero[style] { min-height: 200px; background-position: center 30%; color: #FFFDFB; box-shadow: inset 0 -120px 80px -40px rgb(0 0 0 / 0.55); }
 .stat.hero .number { font-size: 48px; }
+.stat .number { font-variant-numeric: lining-nums; }
+.stat.hero { position: relative; }
+.hero-photo {
+  position: absolute; top: var(--space-sm); right: var(--space-sm);
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; min-height: 36px;
+  border-radius: 999px; background: rgb(0 0 0 / 0.35); color: #FFFDFB; font-size: 14px; font-weight: 600; cursor: pointer;
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+.hero-photo:hover { background: rgb(0 0 0 / 0.5); }
+#hero-photo:focus-visible + .hero-photo { outline: 2px solid var(--border-focus); outline-offset: 2px; }
 
 .two-up { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-sm); }
 .two-up.wide-first { grid-template-columns: 2fr 1fr; }
