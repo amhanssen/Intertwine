@@ -112,6 +112,32 @@ const field = (id, label, input, helper = "") => `
     ${helper ? `<span class="helper">${helper}</span>` : ""}
   </div>`;
 
+// Phones that let a website open the contact list (Chrome on Android; iPhone once its setting is on).
+const canPickContacts = "contacts" in navigator && "select" in navigator.contacts;
+const isIPhone = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+const isMac = !isIPhone && /Macintosh/.test(navigator.userAgent);
+
+/** Help under the buttons, written for the device the couple is on. */
+function contactsHelp() {
+  const fileLink = '<label class="file-link" for="contacts-file">import a contacts file</label>';
+  if (canPickContacts) {
+    return `<p class="footnote secondary">Opens your phone’s contacts so you can pick people. You can also ${fileLink}.</p>`;
+  }
+  const steps = isIPhone ? `
+      <p class="footnote secondary"><b>Fastest:</b> let this website open your contacts. On your iPhone, go to <b>Settings → Apps → Safari → Advanced → Feature Flags</b> and turn on <b>Contact Picker API</b>. Come back and reload this page. You’ll see <b>Choose from contacts</b>.</p>
+      <p class="footnote secondary"><b>Or use a file:</b> in the Contacts app, tap <b>Lists</b>, press and hold a list (like All iCloud), then tap <b>Export</b> → <b>Save to Files</b>. Then tap <b>Import contacts</b> here and pick that file.</p>`
+    : isMac ? `
+      <p class="footnote secondary">Open the Contacts app, select the people (or a whole list), then choose <b>File → Export → Export vCard</b>. Then click <b>Import contacts</b> here and pick that file.</p>
+      <p class="footnote secondary">Using Google Contacts? Open contacts.google.com, select people, then <b>Export → vCard</b>.</p>`
+    : `
+      <p class="footnote secondary">Open contacts.google.com, select people, then <b>Export → vCard</b>. Then choose <b>Import contacts</b> here and pick that file.</p>`;
+  return `
+    <details class="how">
+      <summary class="footnote secondary">${isIPhone ? "How do I get my iPhone contacts?" : "How do I get a contacts file?"}</summary>
+      ${steps}
+    </details>`;
+}
+
 /** The checklist shown after importing contacts: everyone ticked, people already invited greyed out. */
 function pickList(names) {
   const taken = new Set(state.guests.map((g) => g.name.toLowerCase()));
@@ -655,13 +681,12 @@ const pages = {
         <div class="or-line" aria-hidden="true"><span>or add many</span></div>
         <input id="contacts-file" class="visually-hidden" type="file" accept=".vcf,.csv,.txt,text/vcard,text/x-vcard,text/csv" aria-label="Import a contacts file">
         <div class="two-up">
-          <label class="button secondary" for="contacts-file">${icon(icons.person, 20)}Import contacts</label>
+          ${canPickContacts
+            ? `<button class="button secondary" type="button" data-action="pick-contacts">${icon(icons.person, 20)}Choose from contacts</button>`
+            : `<label class="button secondary" for="contacts-file">${icon(icons.person, 20)}Import contacts</label>`}
           <button class="button secondary" type="button" data-action="paste-list">Paste a list</button>
         </div>
-        <details class="how">
-          <summary class="footnote secondary">How do I get a contacts file?</summary>
-          <p class="footnote secondary"><b>Mac:</b> open Contacts, select the people, then File → Export → Export vCard.<br><b>Google:</b> open contacts.google.com, select people, then Export → vCard.</p>
-        </details>
+        ${contactsHelp()}
         <div id="bulk"></div>
       </section>
       ${state.guests.length ? `<div class="row-group">${state.guests.map((g) => row({
@@ -1130,6 +1155,13 @@ main.addEventListener("click", async (e) => {
   };
 
   switch (button.dataset.action) {
+    case "pick-contacts":
+      // Opens the phone's own contact list; nothing is shared until the couple picks people.
+      navigator.contacts.select(["name"], { multiple: true }).then((picked) => {
+        const names = picked.map((c) => c.name?.[0]?.trim()).filter(Boolean);
+        if (names.length) main.querySelector("#bulk").innerHTML = pickList(names);
+      }).catch(() => { /* closed without picking */ });
+      return;
     case "paste-list":
       main.querySelector("#bulk").innerHTML = pasteForm();
       main.querySelector("#bulk-names").focus();
