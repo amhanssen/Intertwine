@@ -121,7 +121,7 @@ const isMac = !isIPhone && /Macintosh/.test(navigator.userAgent);
 function contactsHelp() {
   const fileLink = '<label class="file-link" for="contacts-file">import a contacts file</label>';
   if (canPickContacts) {
-    return `<p class="footnote secondary">Opens your phone’s contacts so you can pick people. You can also ${fileLink}.</p>`;
+    return `<p class="footnote secondary">Pick people from your phone’s contacts. Or ${fileLink}.</p>`;
   }
   const steps = isIPhone ? `
       <p class="footnote secondary"><b>Fastest:</b> let this website open your contacts. On your iPhone, go to <b>Settings → Apps → Safari → Advanced → Feature Flags</b> and turn on <b>Contact Picker API</b>. Come back and reload this page. You’ll see <b>Choose from contacts</b>.</p>
@@ -680,7 +680,7 @@ const pages = {
         </form>
         <div class="or-line" aria-hidden="true"><span>or add many</span></div>
         <input id="contacts-file" class="visually-hidden" type="file" accept=".vcf,.csv,.txt,text/vcard,text/x-vcard,text/csv" aria-label="Import a contacts file">
-        <div class="two-up">
+        <div class="add-many">
           ${canPickContacts
             ? `<button class="button secondary" type="button" data-action="pick-contacts">${icon(icons.person, 20)}Choose from contacts</button>`
             : `<label class="button secondary" for="contacts-file">${icon(icons.person, 20)}Import contacts</label>`}
