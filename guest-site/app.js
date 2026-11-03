@@ -4,6 +4,12 @@
 
 import { data } from "./data.js";
 
+/** Where to centre the couple photo when it's cropped. The couple sets it on their Home ("#pos=X,Y" at the end of the address). */
+function photoPosition(url) {
+  const m = String(url).match(/#pos=(\d+(?:\.\d+)?),(\d+(?:\.\d+)?)/);
+  return m ? `${m[1]}% ${m[2]}%` : "50% 30%";
+}
+
 const main = document.querySelector("main");
 
 // ---------- Formatting (matches Format.swift in the app) ----------
@@ -390,7 +396,7 @@ const pages = {
         <h1 class="large-title">Details</h1>
         <p class="subheadline secondary">${esc(couple())} · ${dayLong(w.date)}</p>
       </header>
-      ${w.photo ? `<img class="cover couple-photo" src="${esc(w.photo)}" alt="${esc(couple())}">` : ""}
+      ${w.photo ? `<img class="cover couple-photo" src="${esc(w.photo.split("#")[0])}" style="object-position:${photoPosition(w.photo)}" alt="${esc(couple())}">` : ""}
       ${w.venue || w.hotelInfo ? `
       <section class="panel">
         <h2 class="title3">Where to stay</h2>

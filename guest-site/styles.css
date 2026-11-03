@@ -356,7 +356,7 @@ a.stat:hover { border-color: var(--border-default); }
   grid-column: 1 / -1; min-height: 140px; justify-content: flex-end;
   background: var(--bg-accent) center / cover; color: var(--text-on-accent); border-color: transparent;
 }
-.stat.hero[style] { min-height: 200px; background-position: center 30%; color: #FFFDFB; border: 0; overflow: hidden; isolation: isolate; }
+.stat.hero[style] { min-height: 200px; color: #FFFDFB; border: 0; overflow: hidden; isolation: isolate; }
 /* Dark tint over the whole photo, darker at the bottom so the count stays readable. */
 .stat.hero[style]::before {
   content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit;
@@ -373,6 +373,19 @@ a.stat:hover { border-color: var(--border-default); }
 }
 .hero-photo:hover { background: rgb(0 0 0 / 0.5); }
 .hero-photo.busy { opacity: 0.6; pointer-events: none; }
+.hero-move { right: calc(var(--space-sm) + 48px); }
+.stat.hero.moving { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.stat.hero.moving:active { cursor: grabbing; }
+.stat.hero.moving .hero-photo { display: none; }
+.move-bar {
+  position: absolute; top: var(--space-sm); left: var(--space-sm); right: var(--space-sm);
+  display: flex; align-items: center; gap: var(--space-xs); padding: 6px 6px 6px 12px;
+  border-radius: 999px; background: rgb(0 0 0 / 0.45); color: #FFFDFB;
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+.move-bar span { flex: 1; }
+.move-bar .button { width: auto; min-height: 32px; padding: 4px 14px; border-radius: 999px; font-size: 14px; }
+.move-bar .button.tertiary { color: #FFFDFB; }
 #hero-photo:focus-visible + .hero-photo { outline: 2px solid var(--border-focus); outline-offset: 2px; }
 
 .two-up { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-sm); }

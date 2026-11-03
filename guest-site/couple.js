@@ -58,6 +58,7 @@ const icons = {
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
   link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
   rings: '<circle cx="9" cy="13" r="5"/><circle cx="15" cy="13" r="5"/>',
+  move: '<path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/>',
   camera: '<path d="M4 8h3l1.5-2.5h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
   sparkle: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/>',
 };
@@ -117,6 +118,16 @@ const field = (id, label, input, helper = "") => `
 const canPickContacts = "contacts" in navigator && "select" in navigator.contacts;
 const isIPhone = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
 const isMac = !isIPhone && /Macintosh/.test(navigator.userAgent);
+
+/**
+ * A photo address can end in #pos=X,Y: where to centre the photo (in %) when it's cropped.
+ * The couple sets it with "Move photo" on Home. The app ignores the end of the address.
+ */
+function photoParts(url) {
+  const [src, hash = ""] = String(url ?? "").split("#");
+  const m = hash.match(/pos=(\d+(?:\.\d+)?),(\d+(?:\.\d+)?)/);
+  return { src, x: m ? Number(m[1]) : 50, y: m ? Number(m[2]) : 30, pos: m ? `${m[1]}% ${m[2]}%` : "50% 30%" };
+}
 
 /** Help under the buttons, written for the device the couple is on. */
 function contactsHelp() {
@@ -476,6 +487,7 @@ const pages = {
   // Home: the countdown, what needs attention and the next event (app: Home tab).
   home() {
     const w = state.wedding;
+    const photo = photoParts(w.photo_url);
     const days = daysUntil(w.date);
     const published = state.events.filter((e) => e.status === "published");
     const replies = state.rsvps.filter((r) => published.some((e) => e.id === r.event_id)).length;
@@ -497,11 +509,12 @@ const pages = {
           <p class="subheadline secondary">${dayLong(w.date)}${w.venue ? ` · ${esc(w.venue)}` : ""}</p>
           <h1 class="large-title">${esc(w.couple_names)}</h1>
         </div>
-        <a class="avatar" href="#/wedding" aria-label="Wedding details">${w.photo_url ? `<img src="${esc(w.photo_url)}" alt="">` : icon(icons.rings, 22)}</a>
+        <a class="avatar" href="#/wedding" aria-label="Wedding details">${w.photo_url ? `<img src="${esc(photo.src)}" style="object-position:${photo.pos}" alt="">` : icon(icons.rings, 22)}</a>
       </header>
       <div class="stats">
-        <div class="stat hero" ${w.photo_url ? `style="background-image:url('${esc(w.photo_url)}')"` : ""}>
+        <div class="stat hero" ${w.photo_url ? `style="background-image:url('${esc(photo.src)}');background-position:${photo.pos}" data-x="${photo.x}" data-y="${photo.y}"` : ""}>
           <input id="hero-photo" class="visually-hidden" type="file" accept="image/*">
+          ${w.photo_url ? `<button class="hero-photo hero-move" type="button" data-action="move-photo" title="Move photo">${icon(icons.move, 20)}<span class="visually-hidden">Move photo</span></button>` : ""}
           <label class="hero-photo" for="hero-photo" title="${w.photo_url ? "Change photo" : "Add a photo"}">${icon(icons.camera, 20)}<span class="visually-hidden">${w.photo_url ? "Change photo" : "Add a photo"}</span></label>
           <span class="number">${Math.abs(days)}</span>
           <span class="subheadline">${days >= 0 ? `${noun(days, "day")} until “I do”` : `${noun(-days, "day")} since “I do”`}</span>
@@ -802,7 +815,7 @@ const pages = {
     return `
       ${back("#/home", "Home")}
       ${header("Wedding details")}
-      ${w.photo_url ? `<img class="cover couple-photo" src="${esc(w.photo_url)}" alt="Your photo">` : ""}
+      ${w.photo_url ? `<img class="cover couple-photo" src="${esc(photoParts(w.photo_url).src)}" style="object-position:${photoParts(w.photo_url).pos}" alt="Your photo">` : ""}
       <form class="stack-lg" id="wedding-form">
         ${field("w-names", "Your names", `<input id="w-names" name="names" value="${esc(w.couple_names)}" required>`)}
         ${field("w-date", "Wedding date", `<input id="w-date" name="date" type="date" value="${esc(w.date)}" required>`)}
@@ -1164,6 +1177,34 @@ main.addEventListener("keydown", (e) => {
 });
 
 // Buttons that aren't part of a form.
+// Dragging the countdown photo while "Move photo" is on.
+let drag = null;
+main.addEventListener("pointerdown", (e) => {
+  const hero = e.target.closest(".stat.hero.moving");
+  if (!hero || e.target.closest(".move-bar")) return;
+  // How far the photo can slide each way: the part of it the card crops off.
+  const box = hero.getBoundingClientRect();
+  const w = Number(hero.dataset.w) || box.width, h = Number(hero.dataset.h) || box.height;
+  const scale = Math.max(box.width / w, box.height / h);
+  drag = {
+    hero, startX: e.clientX, startY: e.clientY, x: Number(hero.dataset.x), y: Number(hero.dataset.y),
+    spareX: w * scale - box.width, spareY: h * scale - box.height,
+  };
+  hero.setPointerCapture(e.pointerId);
+});
+main.addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  const clamp = (n) => Math.min(100, Math.max(0, n));
+  const x = drag.spareX > 0 ? clamp(drag.x - ((e.clientX - drag.startX) / drag.spareX) * 100) : 50;
+  const y = drag.spareY > 0 ? clamp(drag.y - ((e.clientY - drag.startY) / drag.spareY) * 100) : 50;
+  drag.hero.dataset.x = x;
+  drag.hero.dataset.y = y;
+  drag.hero.style.backgroundPosition = `${x}% ${y}%`;
+});
+const endDrag = () => { drag = null; };
+main.addEventListener("pointerup", endDrag);
+main.addEventListener("pointercancel", endDrag);
+
 main.addEventListener("click", async (e) => {
   const button = e.target.closest("[data-action]");
   if (!button || button.type === "checkbox") return;
@@ -1174,6 +1215,34 @@ main.addEventListener("click", async (e) => {
   };
 
   switch (button.dataset.action) {
+    case "move-photo": {
+      const hero = main.querySelector(".stat.hero");
+      hero.classList.add("moving");
+      // The photo's own size tells how far it can slide inside the card.
+      const image = new Image();
+      image.onload = () => { hero.dataset.w = image.naturalWidth; hero.dataset.h = image.naturalHeight; };
+      image.src = photoParts(state.wedding.photo_url).src;
+      hero.insertAdjacentHTML("beforeend", `
+        <div class="move-bar">
+          <span class="footnote">Drag the photo to move it</span>
+          <button class="button tertiary small" type="button" data-action="move-cancel">Cancel</button>
+          <button class="button primary small" type="button" data-action="move-save">Save</button>
+        </div>`);
+      return;
+    }
+    case "move-cancel":
+      render();
+      return;
+    case "move-save": {
+      const hero = main.querySelector(".stat.hero");
+      const src = photoParts(state.wedding.photo_url).src;
+      await run(async () => {
+        await data.saveWedding({ photo_url: `${src}#pos=${Math.round(hero.dataset.x)},${Math.round(hero.dataset.y)}` });
+        render();
+        note("Photo moved. Guests see it this way too.");
+      });
+      return;
+    }
     case "pick-contacts":
       // Opens the phone's own contact list; nothing is shared until the couple picks people.
       navigator.contacts.select(["name"], { multiple: true }).then((picked) => {
@@ -1259,7 +1328,8 @@ function editing() {
     if (el.tagName === "SELECT") return [...el.options].some((o) => o.selected !== o.defaultSelected);
     if (el.type === "file") return el.files.length > 0;
     return el.value !== el.defaultValue;
-  }) || main.contains(document.activeElement) && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
+  }) || main.contains(document.activeElement) && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)
+    || Boolean(main.querySelector(".moving")); // moving the countdown photo
 }
 
 /** Brings in new RSVPs, questions and gifts from guests, like the app's 30-second check. */
