@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Contacts check</title>
+  <style>
+    body { font: 18px/1.5 -apple-system, system-ui, sans-serif; margin: 24px 16px; background: #fff; color: #111; }
+    p { margin: 0 0 12px; word-break: break-word; }
+    .ok { color: #0a7a2f; } .no { color: #b00020; }
+    button { font: inherit; padding: 12px 16px; border-radius: 10px; border: 1px solid #333; background: #f3f3f3; }
+  </style>
+</head>
+<body>
+  <!-- Temporary page: shows whether this browser lets websites open contacts. -->
+  <h1>Contacts check</h1>
+  <div id="out"></div>
+  <p><button id="try" type="button">Try opening contacts</button></p>
+  <p id="result"></p>
+  <script>
+    const has = "contacts" in navigator;
+    const canSelect = has && typeof navigator.contacts.select === "function";
+    const line = (label, yes) => `<p>${label}: <b class="${yes ? "ok" : "no"}">${yes ? "yes" : "no"}</b></p>`;
+    document.getElementById("out").innerHTML =
+      line("Contacts allowed", has) +
+      line("Can choose contacts", canSelect) +
+      line("Secure page", window.isSecureContext) +
+      line("Opened from Home Screen", navigator.standalone === true) +
+      `<p style="font-size:14px;color:#555">${navigator.userAgent}</p>`;
+    document.getElementById("try").onclick = async () => {
+      const result = document.getElementById("result");
+      try {
+        const picked = await navigator.contacts.select(["name"], { multiple: true });
+        result.textContent = "Picked: " + picked.map((c) => c.name?.[0]).join(", ");
+      } catch (error) {
+        result.textContent = "Error: " + error.message;
+      }
+    };
+  </script>
+</body>
+</html>
