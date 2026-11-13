@@ -518,11 +518,61 @@ function moodField(urls) {
     </div>`;
 }
 
-/** A pasted board address, made into a full link ("pinterest.com/…" gets https:// in front). */
+/** A pasted board address, made into a full link. Copes with whatever Pinterest's Share
+ *  button copies ("Check out this board… https://pin.it/abc"), a missing https://, and
+ *  tracking bits on the end (?invite_code=…). */
 function boardLink(value) {
   const v = value.trim();
   if (!v) return "";
-  return /^https?:\/\//i.test(v) ? v : `https://${v}`;
+  const found = v.match(/https?:\/\/\S+/i)?.[0] ?? v.match(/(?:[\w-]+\.)?(?:pinterest\.[a-z.]+|pin\.it)\/\S+/i)?.[0] ?? v;
+  const url = /^https?:\/\//i.test(found) ? found : `https://${found}`;
+  return /pinterest\./i.test(url) ? url.replace(/[?#].*$/, "") : url;
+}
+
+/** A full board address from a Pinterest username and board name ("Our Wedding" → our-wedding). */
+function boardFromName(user, board) {
+  const u = user.trim().replace(/^@/, "").replace(/^.*pinterest\.[a-z.]+\//i, "").replace(/\/.*$/, "");
+  const b = board.trim().toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return u && b ? `https://www.pinterest.com/${u}/${b}/` : "";
+}
+
+const isShortPin = (value) => /pin\.it/i.test(value);
+
+/** The Pinterest board part of "What to wear": paste a link, or type username + board name. */
+function boardField(link) {
+  const canPaste = !!navigator.clipboard?.readText;
+  return `
+    <div class="field">
+      <label for="board">Pinterest board (optional)</label>
+      <div class="board-row">
+        <input id="board" name="board" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false"
+          placeholder="Paste your board’s link" value="${esc(link)}">
+        ${canPaste ? '<button class="button secondary" type="button" data-action="board-paste">Paste</button>' : ""}
+      </div>
+      <a class="helper link" id="board-check" href="${esc(boardLink(link))}" target="_blank" rel="noopener" ${link ? "" : "hidden"}>Open the link to check it’s your board ↗</a>
+      <p class="panel subheadline" id="board-short" ${isShortPin(link) ? "" : "hidden"}>This link works: guests get a button that opens your board. To also show them a preview of the pins, fill in your username and board name below.</p>
+      <details class="board-help" ${isShortPin(link) ? "open" : ""}>
+        <summary>How do I find my board’s link?</summary>
+        <div class="stack-sm subheadline">
+          <p><strong>In the Pinterest app:</strong> open your board, tap the <strong>Share</strong> button (the arrow), then <strong>Copy link</strong>. Come back here and tap <strong>Paste</strong>.</p>
+          <p><strong>On a computer:</strong> open your board on pinterest.com and copy the address from the top of the browser.</p>
+          <p><strong>Or just type it:</strong> your username is on your Pinterest profile, under your name.</p>
+          <div class="two-up">
+            ${field("pin-user", "Username", '<input id="pin-user" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="e.g. miaandryan">')}
+            ${field("pin-board", "Board name", '<input id="pin-board" type="text" autocomplete="off" placeholder="e.g. Our Wedding">')}
+          </div>
+        </div>
+      </details>
+    </div>`;
+}
+
+/** Keeps the check link and the short-link note in step with the board field. */
+function boardChanged(form) {
+  const value = form.elements.board.value;
+  const check = form.querySelector("#board-check");
+  check.hidden = !value.trim();
+  check.href = boardLink(value);
+  form.querySelector("#board-short").hidden = !isShortPin(value);
 }
 
 /** "See the Pinterest board" for a Pinterest link, otherwise "See more ideas". */
@@ -734,8 +784,7 @@ const pages = {
           ${field("dress", "Dress code", `<select id="dress" name="dress">${options(dressCodes, e.dress_code)}</select>`)}
           ${field("guidance", "Guidance for guests (optional)", `<textarea id="guidance" name="guidance" placeholder="Dresses or suits; comfortable shoes welcome.">${esc(e.dress_guidance)}</textarea>`)}
           ${moodField(e.mood_photos ?? [])}
-          ${field("board", "Pinterest board (optional)", `<input id="board" name="board" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="pinterest.com/you/our-wedding" value="${esc(e.mood_link ?? "")}" aria-describedby="board-short">`, "Paste the board’s address, like pinterest.com/you/our-wedding, and guests see a preview of it.")}
-          <p class="panel warning subheadline" id="board-short" ${/pin\.it/i.test(e.mood_link ?? "") ? "" : "hidden"}>This short link opens the board, but can’t show guests a preview. For a preview, open the board on pinterest.com in a browser and copy the address from the top of the page.</p>
+          ${boardField(e.mood_link ?? "")}
           <h2 class="title3">RSVP</h2>
           <div class="segmented" role="radiogroup" aria-label="RSVP">
             <label><input type="radio" name="rsvp" value="yes" ${e.rsvp_required ? "checked" : ""}><span>RSVP required</span></label>
@@ -1231,9 +1280,6 @@ main.addEventListener("change", async (e) => {
       : '<p class="panel warning subheadline" role="alert">No names found in that file. Try a vCard (.vcf) or CSV file.</p>';
     bulk.scrollIntoView({ behavior: "smooth", block: "start" });
   }
-  if (target.id === "board") {
-    target.form.querySelector("#board-short").hidden = !/pin\.it/i.test(target.value);
-  }
   if (target.id === "mood-input" && target.files.length) {
     const form = target.form;
     const room = MOOD_MAX - moodTiles(form).length;
@@ -1332,6 +1378,15 @@ const endDrag = () => { drag = null; };
 main.addEventListener("pointerup", endDrag);
 main.addEventListener("pointercancel", endDrag);
 
+main.addEventListener("input", ({ target }) => {
+  if (target.id === "board") boardChanged(target.form);
+  if (target.id === "pin-user" || target.id === "pin-board") {
+    const form = target.form;
+    const link = boardFromName(form.querySelector("#pin-user").value, form.querySelector("#pin-board").value);
+    if (link) { form.elements.board.value = link; boardChanged(form); }
+  }
+});
+
 main.addEventListener("click", async (e) => {
   const button = e.target.closest("[data-action]");
   if (!button || button.type === "checkbox") return;
@@ -1405,6 +1460,17 @@ main.addEventListener("click", async (e) => {
       button.textContent = "Copied!";
       setTimeout(() => { if (button.isConnected) button.innerHTML = `${icon(icons.link, 20)}Copy link`; }, 2000);
       break;
+    case "board-paste": {
+      const form = button.form;
+      try {
+        const pasted = await navigator.clipboard.readText();
+        if (pasted.trim()) { form.elements.board.value = boardLink(pasted); boardChanged(form); }
+      } catch {
+        form.elements.board.focus();
+        note("Couldn’t paste. Tap the box and choose Paste instead.");
+      }
+      break;
+    }
     case "suggest": {
       const form = main.querySelector("#event-form");
       const s = eventSuggestions[Number(button.dataset.i)];

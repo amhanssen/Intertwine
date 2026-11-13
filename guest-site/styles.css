@@ -342,6 +342,13 @@ fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 .chips input:checked + span { background: var(--bg-accent); border-color: var(--bg-accent); color: var(--text-on-accent); }
 .chips input:focus-visible + span { outline: 2px solid var(--border-focus); outline-offset: 2px; }
 
+.board-row { display: flex; gap: var(--space-xs); }
+.board-row input { flex: 1; min-width: 0; }
+.board-row .button { width: auto; flex: none; padding-inline: var(--space-md); }
+.helper.link { color: var(--text-link, var(--text-primary)); text-decoration: underline; }
+.board-help summary { cursor: pointer; font-weight: 600; color: var(--text-secondary); padding: var(--space-xs) 0; }
+.board-help[open] summary { margin-bottom: var(--space-xs); }
+
 .suggestions { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
 .suggestion {
   min-height: 40px; padding: 0 var(--space-md); border-radius: 999px; cursor: pointer;
