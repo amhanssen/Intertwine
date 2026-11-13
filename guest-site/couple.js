@@ -95,6 +95,34 @@ function rsvpLine(e) {
 
 const eventTypes = ["Welcome Party", "Rehearsal Dinner", "Ceremony & Reception", "Engagement Party",
   "Bridal Shower", "Bachelor/ette Party", "Farewell Brunch", "Other"];
+// Common wedding events the couple can start from (step 1 of a new event). Tapping one fills
+// in the type, name, welcome message, dress code and RSVP; they can change any of it.
+const eventSuggestions = [
+  { type: "Engagement Party", name: "Engagement Party", welcome: "Come celebrate with us! We can’t wait to toast to what’s ahead.", dress: "Cocktail attire", rsvp: true },
+  { type: "Bridal Shower", name: "Bridal Shower", welcome: "Join us for brunch, games and a little pampering.", dress: "Garden party", rsvp: true },
+  { type: "Bachelor/ette Party", name: "Bachelor/ette Party", welcome: "One last big night out before the wedding.", dress: "Casual", rsvp: true },
+  { type: "Rehearsal Dinner", name: "Rehearsal Dinner", welcome: "Thank you for being part of our day. Join us for dinner after the rehearsal.", dress: "Smart casual", rsvp: true },
+  { type: "Welcome Party", name: "Welcome Party", welcome: "Join us for drinks before the big day.", dress: "Cocktail attire", rsvp: true },
+  { type: "Ceremony & Reception", name: "Ceremony & Reception", welcome: "We can’t wait to celebrate with you.", dress: "Formal", rsvp: true },
+  { type: "Other", name: "After Party", welcome: "The night isn’t over yet! Keep dancing with us.", dress: "Cocktail attire", rsvp: false },
+  { type: "Farewell Brunch", name: "Farewell Brunch", welcome: "One more morning together before everyone heads home.", dress: "Casual", rsvp: false },
+];
+
+/** Suggestions for events the couple hasn't added yet. */
+function suggestionsHTML() {
+  const have = new Set(state.events.map((e) => (e.name ?? "").trim().toLowerCase()));
+  const left = eventSuggestions.map((s, i) => ({ ...s, i })).filter((s) => !have.has(s.name.toLowerCase()));
+  if (!left.length) return "";
+  return `
+    <div class="field">
+      <span class="label">Suggestions</span>
+      <div class="suggestions">
+        ${left.map((s) => `<button type="button" class="suggestion" data-action="suggest" data-i="${s.i}" aria-pressed="false">${esc(s.name)}</button>`).join("")}
+      </div>
+      <span class="helper">Tap one to fill in the details. You can change anything.</span>
+    </div>`;
+}
+
 const dressCodes = ["Casual", "Smart casual", "Garden party", "Cocktail attire", "Formal",
   "Black tie optional", "Black tie"];
 // Sample photos for events that don't have their own yet (same as the app).
@@ -684,6 +712,7 @@ const pages = {
         data-published="${published}" data-photo="${esc(e.photo_url ?? "")}">
         <fieldset class="stack-lg" data-step="1">
           <p class="subheadline secondary">Start with a name and a short welcome. You’ll add the time, place and dress code next.</p>
+          ${isNew ? suggestionsHTML() : ""}
           ${field("type", "Event type", `<select id="type" name="type">${options(eventTypes, e.type)}</select>`)}
           ${field("name", "Event name", `<input id="name" name="name" value="${esc(e.name)}" placeholder="e.g. Welcome Party">`)}
           ${field("welcome", "Welcome message (optional)", `<textarea id="welcome" name="welcome" placeholder="Join us for drinks before the big day.">${esc(e.welcome_message)}</textarea>`)}
@@ -1376,6 +1405,20 @@ main.addEventListener("click", async (e) => {
       button.textContent = "Copied!";
       setTimeout(() => { if (button.isConnected) button.innerHTML = `${icon(icons.link, 20)}Copy link`; }, 2000);
       break;
+    case "suggest": {
+      const form = main.querySelector("#event-form");
+      const s = eventSuggestions[Number(button.dataset.i)];
+      const set = (id, value) => { form.querySelector(`#${id}`).value = value; };
+      set("type", s.type);
+      set("name", s.name);
+      set("welcome", s.welcome);
+      set("dress", s.dress);
+      form.querySelector(`input[name="rsvp"][value="${s.rsvp ? "yes" : "no"}"]`).checked = true;
+      form.querySelector("#deadline-field").hidden = !s.rsvp;
+      form.querySelector("#invited-helper").textContent = invitedHelper(s.rsvp);
+      form.querySelectorAll(".suggestion").forEach((b) => b.setAttribute("aria-pressed", String(b === button)));
+      break;
+    }
     case "step": {
       const form = main.querySelector("#event-form");
       const to = button.dataset.to;

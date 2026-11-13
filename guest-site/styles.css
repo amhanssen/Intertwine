@@ -342,6 +342,16 @@ fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 .chips input:checked + span { background: var(--bg-accent); border-color: var(--bg-accent); color: var(--text-on-accent); }
 .chips input:focus-visible + span { outline: 2px solid var(--border-focus); outline-offset: 2px; }
 
+.suggestions { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
+.suggestion {
+  min-height: 40px; padding: 0 var(--space-md); border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border-default); background: var(--bg-surface);
+  font: inherit; font-weight: 600; color: var(--text-secondary);
+}
+.suggestion:hover { border-color: var(--bg-accent); color: var(--text-primary); }
+.suggestion[aria-pressed="true"] { background: var(--bg-accent); border-color: var(--bg-accent); color: var(--text-on-accent); }
+.suggestion:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+
 .success-note { background: var(--bg-success); border-color: transparent; color: var(--text-success); }
 
 .button-row { display: flex; flex-direction: column; gap: var(--space-xxs); }
