@@ -160,35 +160,71 @@ function photoParts(url) {
 
 /** Help under the buttons, written for the device the couple is on. */
 function contactsHelp() {
-  const fileLink = '<label class="file-link" for="contacts-file">import a contacts file</label>';
-  if (canPickContacts) {
-    return `<p class="footnote secondary">Pick people from your phone’s contacts. Or ${fileLink}.</p>`;
-  }
-  const steps = isIPhone ? `
-      <p class="footnote secondary"><b>Fastest:</b> let this website open your contacts. On your iPhone, go to <b>Settings → Apps → Safari → Advanced → Feature Flags</b> and turn on <b>Contact Picker API</b>. Come back and reload this page. You’ll see <b>Choose from contacts</b>.</p>
-      <p class="footnote secondary"><b>Or use a file:</b> in the Contacts app, tap <b>Lists</b>, press and hold a list (like All iCloud), then tap <b>Export</b> → <b>Save to Files</b>. Then tap <b>Import contacts</b> here and pick that file.</p>`
+  const steps = canPickContacts ? `
+      <p class="footnote secondary">Tap <b>Choose from contacts</b> and tick the people you’re inviting. Nothing else is shared.</p>`
+    : isIPhone ? `
+      <p class="footnote secondary"><b>Easiest:</b> tap <b>Paste a list</b> and type or paste names from Notes, a group text or a spreadsheet.</p>
+      <p class="footnote secondary"><b>From the Contacts app:</b> open Contacts, tap <b>Lists</b> at the top left, press and hold a list (like <b>All iCloud</b>), tap <b>Export</b>, then <b>Save to Files</b>. Come back, tap <b>Import a contacts file</b> and pick the file you saved.</p>`
     : isMac ? `
-      <p class="footnote secondary">Open the Contacts app, select the people (or a whole list), then choose <b>File → Export → Export vCard</b>. Then click <b>Import contacts</b> here and pick that file.</p>
-      <p class="footnote secondary">Using Google Contacts? Open contacts.google.com, select people, then <b>Export → vCard</b>.</p>`
+      <p class="footnote secondary"><b>Easiest:</b> click <b>Paste a list</b> and paste names from Notes, Numbers, Excel or an email.</p>
+      <p class="footnote secondary"><b>From the Contacts app:</b> select the people, choose <b>File → Export → Export vCard</b>, then drag the file onto this box (or click <b>Import a contacts file</b>).</p>
+      <p class="footnote secondary"><b>From Google Contacts:</b> open contacts.google.com, tick people, then <b>Export → vCard</b>.</p>`
     : `
-      <p class="footnote secondary">Open contacts.google.com, select people, then <b>Export → vCard</b>. Then choose <b>Import contacts</b> here and pick that file.</p>`;
+      <p class="footnote secondary"><b>Easiest:</b> click <b>Paste a list</b> and paste names from a spreadsheet or an email.</p>
+      <p class="footnote secondary"><b>From Google Contacts:</b> open contacts.google.com, tick people, then <b>Export → vCard</b>, and drag the file onto this box.</p>`;
   return `
     <details class="how">
-      <summary class="footnote secondary">${isIPhone ? "How do I get my iPhone contacts?" : "How do I get a contacts file?"}</summary>
+      <summary class="footnote secondary">How do I add lots of guests at once?</summary>
       ${steps}
     </details>`;
 }
 
+/**
+ * Guests from pasted or typed text: one per line, or separated by commas. Copes with lists
+ * from Notes (bullets, numbers, ticks), spreadsheets (first and last name in two columns, a
+ * header row) and email ("Rosa Diaz <rosa@…>"). "+1", "and guest" or "Jess & Marcus" makes
+ * a party of 2; "(4)" or "x4" at the end sets the party size.
+ */
+function listGuests(textValue) {
+  let lines = textValue.split(/\r?\n/);
+  if (lines.filter((l) => l.trim()).length === 1 && !/\t/.test(textValue)) lines = textValue.split(/[,;]/);
+  const nameish = (c) => !!c && /^[\p{L}'’.-]+$/u.test(c);
+  const out = [];
+  for (let line of lines) {
+    const cells = line.split("\t").map((c) => c.trim()).filter(Boolean);
+    if (/^((first|full|last)\s*)?name|^guests?\b|^given/i.test(cells[0] ?? "")) continue; // a header row
+    // Two short columns from a spreadsheet: first name, last name (then maybe a party size).
+    if (cells.length >= 2 && nameish(cells[0]) && nameish(cells[1])) {
+      const rest = cells.slice(2).join(" ");
+      line = `${cells[0]} ${cells[1]}` + (/^\d{1,2}$/.test(rest) ? ` (${rest})` : /\+\s*\d/.test(rest) ? ` ${rest}` : "");
+    } else if (cells.length >= 2 && /^\d{1,2}$/.test(cells[1])) line = `${cells[0]} (${cells[1]})`;
+    else line = cells[0] ?? "";
+    let party = 1;
+    line = line
+      .replace(/<[^>]*>|\S+@\S+|\+?\(?\d[\d\s().-]{7,}\d/g, " ")          // emails and phone numbers
+      .replace(/^\s*(?:[-*•·◦▪☐☑✓✔]|\[[ x]?\]|\d+[.)])\s*/i, "");     // bullets, ticks and numbering
+    const plus = line.match(/\+\s*(\d+)|\s(?:and|&|\+)\s*(?:a\s+)?guest\b/i);
+    if (plus) { party += Number(plus[1] ?? 1); line = line.replace(plus[0], " "); }
+    const size = line.match(/\((\d{1,2})\)\s*$|\s[x×]\s?(\d{1,2})\s*$/i);
+    if (size) { party = Number(size[1] ?? size[2]); line = line.replace(size[0], " "); }
+    else if (party === 1 && /\s(?:&|and)\s/i.test(line)) party = 2;
+    const name = line.replace(/\s+/g, " ").replace(/^[\s,;:-]+|[\s,;:-]+$/g, "");
+    if (name && /\p{L}/u.test(name)) out.push({ name, party: Math.min(Math.max(party, 1), 10) });
+  }
+  return out;
+}
+
 /** The checklist shown after importing contacts: everyone ticked, people already invited greyed out. */
-function pickList(names) {
+function pickList(people) {
   const taken = new Set(state.guests.map((g) => g.name.toLowerCase()));
   const seen = new Set();
   const list = [];
-  for (const name of names) {
+  for (const person of people) {
+    const { name, party = 1 } = typeof person === "string" ? { name: person } : person;
     const key = name.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    list.push({ name, already: taken.has(key) });
+    list.push({ name, party, already: taken.has(key) });
   }
   const fresh = list.filter((x) => !x.already).length;
   return `
@@ -200,8 +236,9 @@ function pickList(names) {
       <div class="pick-list">
         ${list.map((x) => `
           <label class="check">
-            <input type="checkbox" name="pick" value="${esc(x.name)}" ${x.already ? "disabled" : "checked"}>
-            <span>${esc(x.name)}${x.already ? ' <span class="footnote secondary">· already on your list</span>' : ""}</span>
+            <input type="checkbox" name="pick" value="${esc(x.name)}" data-party="${x.party}" ${x.already ? "disabled" : "checked"}>
+            <span>${esc(x.name)}${x.already ? ' <span class="footnote secondary">· already on your list</span>'
+              : x.party > 1 ? ` <span class="footnote secondary">· party of ${x.party}</span>` : ""}</span>
           </label>`).join("")}
       </div>
       <button class="button primary" type="submit">${addLabel(fresh)}</button>
@@ -222,10 +259,17 @@ function updatePick() {
 
 const addLabel = (n) => n ? `Add ${count(n, "guest")}` : "Tick at least one person";
 
-/** The box for typing or pasting names, one per line. */
+const pasteHelp = "One guest per line. Copy them from Notes, a spreadsheet, a group text or an email. Add “+1” for a guest who’s bringing someone.";
+
+/** The box for typing or pasting names. */
 const pasteForm = () => `
   <form class="stack-sm" id="paste-form">
-    ${field("bulk-names", "Names, one per line", '<textarea id="bulk-names" name="names" rows="6" placeholder="Jessica Avery\nMarcus Lee\nRosa Diaz"></textarea>')}
+    <div class="pick-top">
+      <label class="headline" for="bulk-names">Type or paste names</label>
+      ${navigator.clipboard?.readText ? '<button class="link-button" type="button" data-action="paste-names">Paste</button>' : ""}
+    </div>
+    <textarea id="bulk-names" name="names" rows="7" placeholder="Jessica Avery\nMarcus Lee +1\nThe Diaz family (4)"></textarea>
+    <span class="helper" id="paste-count">${pasteHelp}</span>
     <button class="button primary" type="submit">Next</button>
     <button class="button tertiary" type="button" data-action="bulk-cancel">Cancel</button>
   </form>`;
@@ -297,6 +341,17 @@ function setupPage() {
 }
 
 // ---------- Contacts import ----------
+
+/** Reads a contacts file (vCard, CSV or a plain list of names) and shows the checklist. */
+async function importFile(file) {
+  const bulk = main.querySelector("#bulk");
+  if (!bulk) return;
+  const textFile = await file.text();
+  const names = /BEGIN:VCARD/i.test(textFile) || /\.csv$/i.test(file.name) ? contactNames(textFile) : listGuests(textFile);
+  bulk.innerHTML = names.length ? pickList(names)
+    : '<p class="panel warning subheadline" role="alert">No names found in that file. Try <b>Paste a list</b> instead: copy the names and paste them in.</p>';
+  bulk.scrollIntoView({ behavior: "smooth", block: "start" });
+}
 
 /** Names from a vCard (.vcf) or CSV file exported from Contacts, Google or Outlook. */
 function contactNames(textFile) {
@@ -829,7 +884,7 @@ const pages = {
     const people = state.guests.reduce((sum, g) => sum + g.party_size, 0);
     return `
       ${header("Guests", state.guests.length ? `${count(state.guests.length, "invitation")} · up to ${count(people, "person", "people")}` : "Everyone you’re inviting")}
-      <section class="panel stack-sm" aria-labelledby="add-title">
+      <section class="panel stack-sm" id="add-guests" aria-labelledby="add-title">
         <h2 class="headline" id="add-title">Add guests</h2>
         <form class="stack-sm" id="guest-form">
           <div class="two-up wide-first">
@@ -839,12 +894,11 @@ const pages = {
           <button class="button primary" type="submit">Add guest</button>
         </form>
         <div class="or-line" aria-hidden="true"><span>or add many</span></div>
-        <input id="contacts-file" class="visually-hidden" type="file" accept=".vcf,.csv,.txt,text/vcard,text/x-vcard,text/csv" aria-label="Import a contacts file">
+        <input id="contacts-file" class="visually-hidden" type="file" accept=".vcf,.csv,.txt,.tsv,text/vcard,text/x-vcard,text/csv,text/plain" aria-label="Import a contacts file">
         <div class="add-many">
-          ${canPickContacts
-            ? `<button class="button secondary" type="button" data-action="pick-contacts">${icon(icons.person, 20)}Choose from contacts</button>`
-            : `<label class="button secondary" for="contacts-file">${icon(icons.person, 20)}Import contacts</label>`}
+          ${canPickContacts ? `<button class="button secondary" type="button" data-action="pick-contacts">${icon(icons.person, 20)}Choose from contacts</button>` : ""}
           <button class="button secondary" type="button" data-action="paste-list">Paste a list</button>
+          <label class="button tertiary" for="contacts-file">Import a contacts file</label>
         </div>
         ${contactsHelp()}
         <div id="bulk"></div>
@@ -1223,13 +1277,14 @@ main.addEventListener("submit", async (e) => {
   }
 
   if (form.id === "paste-form") {
-    const names = String(fields.get("names")).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    if (!names.length) { main.querySelector("#bulk-names").focus(); return; }
-    main.querySelector("#bulk").innerHTML = pickList(names);
+    const people = listGuests(String(fields.get("names")));
+    if (!people.length) { main.querySelector("#bulk-names").focus(); return; }
+    main.querySelector("#bulk").innerHTML = pickList(people);
   }
 
   if (form.id === "bulk-form") {
-    const names = fields.getAll("pick").map(String);
+    const names = [...form.querySelectorAll('input[name="pick"]:checked')]
+      .map((b) => ({ name: b.value, party: Number(b.dataset.party) || 1 }));
     if (!names.length) return;
     if (await busy(form, "Adding…", () => data.addGuests(names))) {
       go("#/guests", `Added ${count(names.length, "guest")}. Each one has their own invite link.`);
@@ -1273,12 +1328,9 @@ main.addEventListener("change", async (e) => {
     main.querySelector("#bought-field").hidden = fund;
   }
   if (target.id === "contacts-file" && target.files[0]) {
-    const bulk = main.querySelector("#bulk");
-    const names = contactNames(await target.files[0].text());
+    const file = target.files[0];
     target.value = "";
-    bulk.innerHTML = names.length ? pickList(names)
-      : '<p class="panel warning subheadline" role="alert">No names found in that file. Try a vCard (.vcf) or CSV file.</p>';
-    bulk.scrollIntoView({ behavior: "smooth", block: "start" });
+    await importFile(file);
   }
   if (target.id === "mood-input" && target.files.length) {
     const form = target.form;
@@ -1378,7 +1430,29 @@ const endDrag = () => { drag = null; };
 main.addEventListener("pointerup", endDrag);
 main.addEventListener("pointercancel", endDrag);
 
+// Drag a contacts file onto the Add guests box (on a computer).
+const dropZone = (e) => e.target.closest?.("#add-guests");
+main.addEventListener("dragover", (e) => {
+  if (!dropZone(e) || !e.dataTransfer?.types.includes("Files")) return;
+  e.preventDefault();
+  dropZone(e).classList.add("dropping");
+});
+main.addEventListener("dragleave", (e) => {
+  if (dropZone(e) && !dropZone(e).contains(e.relatedTarget)) dropZone(e).classList.remove("dropping");
+});
+main.addEventListener("drop", async (e) => {
+  const zone = dropZone(e);
+  if (!zone) return;
+  e.preventDefault();
+  zone.classList.remove("dropping");
+  if (e.dataTransfer.files[0]) await importFile(e.dataTransfer.files[0]);
+});
+
 main.addEventListener("input", ({ target }) => {
+  if (target.id === "bulk-names") {
+    const n = listGuests(target.value).length;
+    main.querySelector("#paste-count").textContent = n ? `${count(n, "guest")} found. Tap Next to check them.` : pasteHelp;
+  }
   if (target.id === "board") boardChanged(target.form);
   if (target.id === "pin-user" || target.id === "pin-board") {
     const form = target.form;
@@ -1434,6 +1508,17 @@ main.addEventListener("click", async (e) => {
       main.querySelector("#bulk").innerHTML = pasteForm();
       main.querySelector("#bulk-names").focus();
       return;
+    case "paste-names": {
+      const box = main.querySelector("#bulk-names");
+      try {
+        const pasted = await navigator.clipboard.readText();
+        if (pasted.trim()) {
+          box.value = (box.value.trim() ? `${box.value.trimEnd()}\n` : "") + pasted;
+          box.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+      } catch { box.focus(); note("Couldn’t paste. Tap the box and choose Paste instead."); }
+      return;
+    }
     case "bulk-cancel":
       main.querySelector("#bulk").innerHTML = "";
       return;

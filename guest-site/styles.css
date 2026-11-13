@@ -462,4 +462,5 @@ a.stat:hover { border-color: var(--border-default); }
 .pick-top .link-button { flex: none; width: auto; min-height: 0; padding: 0; font-size: 15px; }
 .file-link { text-decoration: underline; cursor: pointer; }
 .add-many { display: grid; gap: var(--space-sm); }
+#add-guests.dropping { outline: 2px dashed var(--bg-accent); outline-offset: 4px; }
 .how p + p { margin-top: var(--space-xs); }
