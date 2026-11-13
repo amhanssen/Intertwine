@@ -342,6 +342,28 @@ function setupPage() {
 
 // ---------- Contacts import ----------
 
+/** Opens the phone's own contact list (Contact Picker). Nothing is shared until people are picked. */
+async function pickContacts() {
+  const bulk = main.querySelector("#bulk");
+  const show = (html) => { bulk.innerHTML = html; bulk.scrollIntoView({ behavior: "smooth", block: "start" }); };
+  const problem = (text) => show(`<p class="panel warning subheadline" role="alert">${text}</p>`);
+  let picked;
+  try {
+    // Ask for email and phone too (when the phone offers them), so people saved without a name still show up.
+    const offered = (await navigator.contacts.getProperties?.()) ?? ["name"];
+    const wanted = ["name", "email", "tel"].filter((p) => offered.includes(p));
+    picked = await navigator.contacts.select(wanted.length ? wanted : ["name"], { multiple: true });
+  } catch (error) {
+    console.warn("Contact picker:", error);
+    return problem("Your contacts didn’t open. Reload this page and try again. If it still doesn’t work, tap <b>Paste a list</b> instead.");
+  }
+  if (!picked?.length) return; // closed without picking anyone
+  const names = picked.map((c) => (c.name ?? []).map((n) => n?.trim()).find(Boolean) || c.email?.[0]?.trim() || c.tel?.[0]?.trim())
+    .filter(Boolean);
+  if (!names.length) return problem("Those contacts don’t have names saved, so there’s nothing to add. Try <b>Paste a list</b> and type their names.");
+  show(pickList(names));
+}
+
 /** Reads a contacts file (vCard, CSV or a plain list of names) and shows the checklist. */
 async function importFile(file) {
   const bulk = main.querySelector("#bulk");
@@ -1499,10 +1521,7 @@ main.addEventListener("click", async (e) => {
     }
     case "pick-contacts":
       // Opens the phone's own contact list; nothing is shared until the couple picks people.
-      navigator.contacts.select(["name"], { multiple: true }).then((picked) => {
-        const names = picked.map((c) => c.name?.[0]?.trim()).filter(Boolean);
-        if (names.length) main.querySelector("#bulk").innerHTML = pickList(names);
-      }).catch(() => { /* closed without picking */ });
+      pickContacts();
       return;
     case "paste-list":
       main.querySelector("#bulk").innerHTML = pasteForm();
