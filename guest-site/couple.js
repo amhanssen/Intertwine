@@ -585,12 +585,22 @@ function moodTile(src, attrs) {
     </div>`;
 }
 
+/** Ready-made mood boards (free Unsplash photos in images/moods, see CREDITS.md there). */
+const moodStyles = { garden: "Garden party", blacktie: "Black tie", beach: "Beach", rustic: "Rustic barn", cocktail: "Cocktail" };
+const moodStylePhotos = (key) => [1, 2, 3, 4, 5, 6].map((i) => new URL(`images/moods/${key}-${i}.jpg`, location.href).href);
+const isStylePhoto = (url) => /\/images\/moods\//.test(url ?? "");
+
 /** The mood board editor in the event form's "What to wear" step. */
 function moodField(urls) {
   moodFiles.clear();
   return `
     <div class="field">
       <span class="label">Mood board (optional)</span>
+      <span class="helper">Start from a ready-made board, then remove or add photos.</span>
+      <div class="suggestions" role="group" aria-label="Ready-made mood boards">
+        ${Object.entries(moodStyles).map(([key, name]) => `<button class="suggestion" type="button" data-action="mood-style" data-style="${key}"
+          aria-pressed="${urls.some((u) => u.includes(`/moods/${key}-`))}">${name}</button>`).join("")}
+      </div>
       <div class="mood-grid" id="mood-grid">
         ${urls.map((url) => moodTile(url, `data-url="${esc(url)}"`)).join("")}
         <label class="mood-add" for="mood-input" ${urls.length >= MOOD_MAX ? "hidden" : ""}>${icon(icons.plus, 24)}<span>Add photos</span></label>
@@ -1706,6 +1716,20 @@ main.addEventListener("click", async (e) => {
   };
 
   switch (button.dataset.action) {
+    case "mood-style": {
+      // Swap in a ready-made board: earlier ready-made photos go, the couple's own stay.
+      const form = button.form;
+      moodTiles(form).filter((t) => isStylePhoto(t.dataset.url)).forEach((t) => t.remove());
+      const add = form.querySelector(".mood-add");
+      const room = MOOD_MAX - moodTiles(form).length;
+      for (const url of moodStylePhotos(button.dataset.style).slice(0, room)) {
+        add.insertAdjacentHTML("beforebegin", moodTile(url, `data-url="${esc(url)}"`));
+      }
+      form.querySelectorAll('[data-action="mood-style"]').forEach((b) => b.setAttribute("aria-pressed", String(b === button)));
+      form.dataset.moodChanged = "true";
+      updateMoodAdd(form);
+      return;
+    }
     case "mood-remove": {
       const form = button.form;
       const tile = button.closest(".mood-tile");
