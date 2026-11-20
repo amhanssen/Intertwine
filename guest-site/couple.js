@@ -590,6 +590,80 @@ const moodStyles = { garden: "Garden party", blacktie: "Black tie", beach: "Beac
 const moodStylePhotos = (key) => [1, 2, 3, 4, 5, 6].map((i) => new URL(`images/moods/${key}-${i}.jpg`, location.href).href);
 const isStylePhoto = (url) => /\/images\/moods\//.test(url ?? "");
 
+/**
+ * "Not sure?" quiz: three tap-to-answer questions that point to one of the ready-made boards.
+ * Each answer gives points to styles; the place counts most and settles a tie.
+ */
+const moodQuiz = [
+  { q: "Where is it?", answers: [
+    { a: "Garden or park", short: "garden", points: { garden: 2 } },
+    { a: "Ballroom or hotel", short: "ballroom", points: { blacktie: 2 } },
+    { a: "Beach or by the water", short: "beach", points: { beach: 2 } },
+    { a: "Barn or farm", short: "barn", points: { rustic: 2 } },
+    { a: "Rooftop, bar or restaurant", short: "rooftop", points: { cocktail: 2 } },
+  ] },
+  { q: "When is it?", answers: [
+    { a: "Daytime", short: "daytime", points: { garden: 1, beach: 1, rustic: 1 } },
+    { a: "Evening", short: "evening", points: { blacktie: 1, cocktail: 1 } },
+  ] },
+  { q: "How dressed up?", answers: [
+    { a: "Relaxed", short: "relaxed", points: { beach: 1, rustic: 1 } },
+    { a: "Dressy", short: "dressy", points: { garden: 1, cocktail: 1 } },
+    { a: "Very formal", short: "very formal", points: { blacktie: 2 } },
+  ] },
+];
+
+/** The best style for the answers (answer index per question). */
+function quizResult(picks) {
+  const score = Object.fromEntries(Object.keys(moodStyles).map((k) => [k, 0]));
+  picks.forEach((i, q) => Object.entries(moodQuiz[q].answers[i].points).forEach(([k, n]) => { score[k] += n; }));
+  const place = Object.keys(moodQuiz[0].answers[picks[0]].points)[0];
+  return Object.keys(score).reduce((best, k) => (score[k] > score[best] ? k : best), place);
+}
+
+/** One step of the quiz: the next question, or the result once all three are answered. */
+function quizHTML(picks) {
+  const step = picks.length;
+  if (step < moodQuiz.length) {
+    const { q, answers } = moodQuiz[step];
+    return `
+      <p class="quiz-step">Question ${step + 1} of ${moodQuiz.length}</p>
+      <p class="quiz-question" id="quiz-q">${q}</p>
+      <div class="suggestions" role="group" aria-labelledby="quiz-q">
+        ${answers.map(({ a }, i) => `<button class="suggestion" type="button" data-action="quiz-answer" data-i="${i}">${a}</button>`).join("")}
+      </div>
+      <div class="quiz-actions">
+        ${step ? '<button class="link-button" type="button" data-action="quiz-back">Back</button>' : ""}
+        <button class="link-button" type="button" data-action="quiz-close">Close</button>
+      </div>`;
+  }
+  const key = quizResult(picks);
+  const why = picks.map((i, q) => moodQuiz[q].answers[i].short);
+  const sentence = why.join(" + ");
+  return `
+    <p class="quiz-step">Your style</p>
+    <p class="quiz-question">${moodStyles[key]}</p>
+    <p class="helper">${sentence[0].toUpperCase() + sentence.slice(1)} → ${moodStyles[key]}. You can still remove photos, add your own or pick another style.</p>
+    <div class="mood-grid quiz-preview">${moodStylePhotos(key).slice(0, 3).map((u) => `<img src="${esc(u)}" alt="" loading="lazy">`).join("")}</div>
+    <button class="button primary" type="button" data-action="quiz-use" data-style="${key}">Use this board</button>
+    <div class="quiz-actions">
+      <button class="link-button" type="button" data-action="quiz-open">Start over</button>
+      <button class="link-button" type="button" data-action="quiz-close">Close</button>
+    </div>`;
+}
+
+/** Shows the quiz at the given answers (or hides it with null). */
+function showQuiz(form, picks) {
+  const box = form.querySelector("#mood-quiz");
+  box.hidden = !picks;
+  form.querySelector(".quiz-open").setAttribute("aria-expanded", String(!!picks));
+  if (!picks) { form.querySelector(".quiz-open").focus(); return; }
+  box.dataset.picks = picks.join(",");
+  box.innerHTML = quizHTML(picks);
+  box.querySelector("button")?.focus();
+}
+const quizPicks = (form) => (form.querySelector("#mood-quiz").dataset.picks || "").split(",").filter(Boolean).map(Number);
+
 /** The mood board editor in the event form's "What to wear" step. */
 function moodField(urls) {
   moodFiles.clear();
@@ -601,6 +675,8 @@ function moodField(urls) {
         ${Object.entries(moodStyles).map(([key, name]) => `<button class="suggestion" type="button" data-action="mood-style" data-style="${key}"
           aria-pressed="${urls.some((u) => u.includes(`/moods/${key}-`))}">${name}</button>`).join("")}
       </div>
+      <button class="link-button quiz-open" type="button" data-action="quiz-open" aria-expanded="false" aria-controls="mood-quiz">Not sure? Take a 3-question quiz</button>
+      <div class="mood-quiz" id="mood-quiz" hidden></div>
       <div class="mood-grid" id="mood-grid">
         ${urls.map((url) => moodTile(url, `data-url="${esc(url)}"`)).join("")}
         <label class="mood-add" for="mood-input" ${urls.length >= MOOD_MAX ? "hidden" : ""}>${icon(icons.plus, 24)}<span>Add photos</span></label>
@@ -1728,6 +1804,25 @@ main.addEventListener("click", async (e) => {
       form.querySelectorAll('[data-action="mood-style"]').forEach((b) => b.setAttribute("aria-pressed", String(b === button)));
       form.dataset.moodChanged = "true";
       updateMoodAdd(form);
+      return;
+    }
+    case "quiz-open":
+      showQuiz(button.form, []);
+      return;
+    case "quiz-answer":
+      showQuiz(button.form, [...quizPicks(button.form), Number(button.dataset.i)]);
+      return;
+    case "quiz-back":
+      showQuiz(button.form, quizPicks(button.form).slice(0, -1));
+      return;
+    case "quiz-close":
+      showQuiz(button.form, null);
+      return;
+    case "quiz-use": {
+      const form = button.form;
+      showQuiz(form, null);
+      form.querySelector(`[data-action="mood-style"][data-style="${button.dataset.style}"]`).click();
+      form.querySelector("#mood-grid").scrollIntoView({ behavior: "smooth", block: "nearest" });
       return;
     }
     case "mood-remove": {

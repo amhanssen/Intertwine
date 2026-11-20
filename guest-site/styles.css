@@ -359,6 +359,17 @@ fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 .suggestion[aria-pressed="true"] { background: var(--bg-accent); border-color: var(--bg-accent); color: var(--text-on-accent); }
 .suggestion:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
 
+.quiz-open { width: auto; text-align: left; text-decoration: underline; padding: var(--space-xxs) 0; }
+.mood-quiz {
+  display: flex; flex-direction: column; gap: var(--space-sm);
+  padding: var(--space-md); border-radius: var(--radius-md); background: var(--bg-accent-subtle);
+}
+.mood-quiz[hidden] { display: none; }
+.quiz-step { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+.quiz-question { margin: 0; font-family: var(--font-heading, inherit); font-size: 22px; font-weight: 700; color: var(--text-primary); }
+.quiz-actions { display: flex; gap: var(--space-md); }
+.quiz-actions .link-button { width: auto; padding: 0; }
+
 .success-note { background: var(--bg-success); border-color: transparent; color: var(--text-success); }
 
 .button-row { display: flex; flex-direction: column; gap: var(--space-xxs); }
