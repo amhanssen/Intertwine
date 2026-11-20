@@ -213,6 +213,11 @@ drop policy if exists "couple owns vendors" on vendors;
 create policy "couple owns vendors" on vendors for all to authenticated
   using (owns_wedding(wedding_id)) with check (owns_wedding(wedding_id));
 
+-- Let signed-in couples reach the planning tables through the website (the policies above
+-- still limit them to their own wedding). Guests (anon) get nothing.
+grant select, insert, update, delete on tasks, vendors to authenticated;
+revoke all on tasks, vendors from anon;
+
 -- ---------- Photos ----------
 -- Event and couple photos go in the public "photos" bucket, in a folder named after the
 -- wedding's id. Anyone with the address can see a photo (that's how the website shows
@@ -483,3 +488,6 @@ revoke all on function reset_demo() from public;
 grant execute on function reset_demo() to anon, authenticated;
 
 select reset_demo();
+
+-- Tell the website connection (the Data API) to pick up new tables and columns right away.
+notify pgrst, 'reload schema';
