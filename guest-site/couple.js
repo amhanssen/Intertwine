@@ -4,7 +4,7 @@
 // (to-dos and vendors), which is only on the website for now. Each page is a
 // function that returns HTML; the address after "#" picks the page.
 
-import { data, state, inviteLink, SignedOut } from "./couple-data.js?v=17";
+import { data, state, inviteLink, SignedOut } from "./couple-data.js?v=18";
 
 const main = document.querySelector("main");
 
@@ -744,14 +744,27 @@ function dueText(day) {
   return `Due ${dayShort(day)}`;
 }
 
-function taskRow(t) {
+/** A select for linking a to-do or vendor to one event (or none). Empty when there are no events. */
+function eventSelect(id, selected, label = "For which event (optional)") {
+  if (!state.events.length) return "";
+  return field(id, label, `<select id="${id}" name="event">
+    <option value="">No event (the whole wedding)</option>
+    ${state.events.map((e) => `<option value="${e.id}" ${e.id === selected ? "selected" : ""}>${esc(e.name)}</option>`).join("")}
+  </select>`);
+}
+
+const eventName = (id) => (id ? data.event(id)?.name ?? "" : "");
+
+/** A to-do with a checkbox. On Planning it also names its event; on the event page it doesn't need to. */
+function taskRow(t, { showEvent = true } = {}) {
   const due = dueText(t.due);
+  const linked = showEvent ? eventName(t.event_id) : "";
   const late = t.due && !t.done && daysUntil(t.due) < 0;
   return `
     <div class="row task${t.done ? " done" : ""}">
       <label class="check-row task-check">
         <input type="checkbox" data-action="task-done" data-id="${t.id}" ${t.done ? "checked" : ""} aria-label="${t.done ? "Mark not done" : "Mark done"}: ${esc(t.title)}">
-        <span class="text"><span class="headline">${esc(t.title)}</span>${due ? `<span class="subheadline ${late ? "late" : "secondary"}">${due}</span>` : ""}</span>
+        <span class="text"><span class="headline">${esc(t.title)}</span>${due || linked ? `<span class="subheadline ${late ? "late" : "secondary"}">${[due, linked && esc(linked)].filter(Boolean).join(" · ")}</span>` : ""}</span>
       </label>
       <button class="icon-button" type="button" data-action="delete-task" data-id="${t.id}" aria-label="Remove ${esc(t.title)}">${icon(icons.close, 18)}</button>
     </div>`;
@@ -760,8 +773,33 @@ function taskRow(t) {
 const telHref = (phone) => `tel:${phone.replace(/[^\d+]/g, "")}`;
 const webHref = (url) => (/^https?:\/\//i.test(url) ? url : `https://${url}`);
 
-function vendorSubtitle(v) {
-  return [v.category, v.contact_name, v.phone].filter(Boolean).map(esc).join(" · ");
+function vendorSubtitle(v, { showEvent = true } = {}) {
+  return [v.category, showEvent && eventName(v.event_id), v.contact_name, v.phone].filter(Boolean).map(esc).join(" · ");
+}
+
+/** The event's vendors and to-dos (couple only), with a quick way to add more. */
+function eventPlanning(e) {
+  const vendors = data.eventVendors(e.id);
+  const tasks = data.eventTasks(e.id).sort(byDue);
+  const open = tasks.filter((t) => !t.done), done = tasks.length - open.length;
+  return `
+    <section class="stack">
+      <h2 class="title3">Vendors &amp; to-dos</h2>
+      <p class="subheadline secondary">Only the two of you see this. Everything here is also on <a href="#/planning">Planning</a>.</p>
+      ${vendors.length ? `<div class="row-group">${vendors.map((v) => row({
+        href: `#/vendor/${v.id}/${e.id}`, title: esc(v.name), subtitle: vendorSubtitle(v, { showEvent: false }), iconPath: icons.person,
+      })).join("")}</div>` : ""}
+      <a class="button secondary" href="#/vendor/new/${e.id}">${icon(icons.plus, 20)}Add a vendor for this event</a>
+      ${open.length ? `<div class="row-group">${open.map((t) => taskRow(t, { showEvent: false })).join("")}</div>` : ""}
+      ${done ? `<p class="footnote secondary">${count(done, "to-do")} done for this event.</p>` : ""}
+      <form class="panel stack-sm" id="task-form" data-event="${e.id}">
+        <div class="two-up wide-first">
+          ${field("task-title", "New to-do for this event", '<input id="task-title" name="title" placeholder="Confirm the setup time" maxlength="300" required>')}
+          ${field("task-due", "Due (optional)", '<input id="task-due" name="due" type="date">')}
+        </div>
+        <button class="button secondary" type="submit">${icon(icons.plus, 20)}Add to-do</button>
+      </form>
+    </section>`;
 }
 
 const pages = {
@@ -879,6 +917,7 @@ const pages = {
         ${moodGrid(e.mood_photos)}
         ${boardButton(e.mood_link)}
       </section>
+      ${eventPlanning(e)}
       ${e.status === "published" ? '<button class="button tertiary" type="button" data-action="unpublish">Hide from guests (back to draft)</button>' : ""}
       <button class="button tertiary danger" type="button" data-action="delete-event">Delete event</button>`;
   },
@@ -1093,9 +1132,10 @@ const pages = {
             ${field("task-title", "New to-do", '<input id="task-title" name="title" placeholder="Book the florist" maxlength="300" required>')}
             ${field("task-due", "Due (optional)", '<input id="task-due" name="due" type="date">')}
           </div>
+          ${eventSelect("task-event")}
           <button class="button secondary" type="submit">${icon(icons.plus, 20)}Add to-do</button>
         </form>
-        ${open.length ? `<div class="row-group">${open.map(taskRow).join("")}</div>` : ""}
+        ${open.length ? `<div class="row-group">${open.map((t) => taskRow(t)).join("")}</div>` : ""}
         ${state.tasks.length ? "" : `
           <div class="panel accent stack-sm">
             <p class="headline">Not sure where to start?</p>
@@ -1105,7 +1145,7 @@ const pages = {
         ${done.length ? `
           <details class="done-tasks">
             <summary class="subheadline secondary">Done (${done.length})</summary>
-            <div class="row-group">${done.map(taskRow).join("")}</div>
+            <div class="row-group">${done.map((t) => taskRow(t)).join("")}</div>
           </details>` : ""}
       </section>
       <section class="stack">
@@ -1119,9 +1159,12 @@ const pages = {
   },
 
   // Add or change a vendor, with buttons to call, text or email them.
-  vendor(id) {
+  // Opened from an event page, the address also has that event (#/vendor/<id>/<event id>),
+  // so Back and Save return there and a new vendor starts linked to it.
+  vendor(id, from) {
     const isNew = id === "new";
-    const v = isNew ? { category: "", name: "", contact_name: "", phone: "", email: "", website: "", notes: "" } : data.vendor(id);
+    const fromEvent = from && data.event(from);
+    const v = isNew ? { category: "", name: "", contact_name: "", phone: "", email: "", website: "", notes: "", event_id: fromEvent?.id ?? null } : data.vendor(id);
     if (!v) return notFound();
     const actions = isNew ? [] : [
       v.phone && `<a class="button secondary" href="${esc(telHref(v.phone))}">${icon(icons.phone, 20)}Call</a>`,
@@ -1131,15 +1174,16 @@ const pages = {
     ].filter(Boolean);
     const known = vendorTypes.includes(v.category);
     return `
-      ${back("#/planning", "Planning")}
-      ${header(isNew ? "Add a vendor" : esc(v.name), isNew ? "" : esc(v.category))}
+      ${fromEvent ? back(`#/event/${fromEvent.id}`, esc(fromEvent.name)) : back("#/planning", "Planning")}
+      ${header(isNew ? "Add a vendor" : esc(v.name), isNew ? "" : esc([v.category, eventName(v.event_id)].filter(Boolean).join(" · ")))}
       ${actions.length ? `<div class="contact-actions">${actions.join("")}</div>` : ""}
-      <form class="stack-lg" id="vendor-form" data-id="${isNew ? "" : v.id}">
+      <form class="stack-lg" id="vendor-form" data-id="${isNew ? "" : v.id}" data-back="${fromEvent ? `#/event/${fromEvent.id}` : "#/planning"}">
         ${field("v-category", "What they do", `<select id="v-category" name="category">
           <option value="" ${v.category ? "" : "selected"} disabled>Choose one</option>
           ${vendorTypes.map((t) => `<option ${t === v.category ? "selected" : ""}>${t}</option>`).join("")}
           ${v.category && !known ? `<option selected>${esc(v.category)}</option>` : ""}
         </select>`)}
+        ${eventSelect("v-event", v.event_id ?? "", "Working at which event (optional)")}
         ${field("v-name", "Business name", `<input id="v-name" name="name" value="${esc(v.name)}" placeholder="Bloom & Co." required>`)}
         ${field("v-contact", "Contact person (optional)", `<input id="v-contact" name="contact" value="${esc(v.contact_name)}" placeholder="Who you talk to">`)}
         <div class="two-up">
@@ -1288,12 +1332,12 @@ const tabs = { home: "home", questions: "home", wedding: "home", events: "events
   guests: "guests", guest: "guests", registry: "registry", item: "registry", planning: "planning", vendor: "planning" };
 
 function route() {
-  const [path, param] = location.hash.replace(/^#\/?/, "").split("/");
-  return { name: path || "home", param };
+  const [path, param, extra] = location.hash.replace(/^#\/?/, "").split("/");
+  return { name: path || "home", param, extra };
 }
 
 function render({ keepScroll = false } = {}) {
-  const { name, param } = route();
+  const { name, param, extra } = route();
   const signedIn = data.signedIn() && state.wedding;
   document.body.classList.toggle("signed-out", !signedIn);
   if (!data.signedIn()) {
@@ -1304,8 +1348,8 @@ function render({ keepScroll = false } = {}) {
   } else if (!state.wedding) {
     main.innerHTML = setupPage();
   } else {
-    main.innerHTML = (pages[name] ?? notFound)(param);
-    const tab = tabs[name] ?? "home";
+    main.innerHTML = (pages[name] ?? notFound)(param, extra);
+    const tab = name === "vendor" && extra ? "events" : tabs[name] ?? "home";
     document.querySelectorAll(".tabbar a[data-tab]").forEach((a) => {
       if (a.dataset.tab === tab) a.setAttribute("aria-current", "page");
       else a.removeAttribute("aria-current");
@@ -1360,6 +1404,11 @@ function go(hash, message = null) {
 
 const text = (fields, name) => String(fields.get(name) ?? "").trim();
 const optionalDate = (fields, name) => text(fields, name) || null;
+/** The vendor's event, sent only when there is one to save or clear (so it works before the database update). */
+function eventField(fields, id) {
+  const chosen = text(fields, "event") || null;
+  return chosen || data.vendor(id)?.event_id ? { event_id: chosen } : {};
+}
 
 // Forms, in one place so pages stay plain HTML.
 main.addEventListener("submit", async (e) => {
@@ -1478,7 +1527,8 @@ main.addEventListener("submit", async (e) => {
   }
 
   if (form.id === "task-form") {
-    if (await busy(form, "Adding…", () => data.addTasks([{ title: text(fields, "title"), due: optionalDate(fields, "due") }]))) {
+    if (await busy(form, "Adding…", () => data.addTasks([{ title: text(fields, "title"), due: optionalDate(fields, "due"),
+      event_id: form.dataset.event || text(fields, "event") || null }]))) {
       render({ keepScroll: true });
       main.querySelector("#task-title")?.focus();
     }
@@ -1489,8 +1539,8 @@ main.addEventListener("submit", async (e) => {
     if (await busy(form, "Saving…", () => data.saveVendor(form.dataset.id || null, {
       category: text(fields, "category"), name: text(fields, "name"), contact_name: text(fields, "contact"),
       phone: text(fields, "phone"), email: text(fields, "email"), website: website ? webHref(website) : "",
-      notes: text(fields, "notes"),
-    }))) { go("#/planning", form.dataset.id ? "Vendor saved." : "Vendor added."); }
+      notes: text(fields, "notes"), ...eventField(fields, form.dataset.id),
+    }))) { go(form.dataset.back, form.dataset.id ? "Vendor saved." : "Vendor added."); }
   }
 
   if (form.classList.contains("answer-form")) {
@@ -1793,7 +1843,8 @@ main.addEventListener("click", async (e) => {
       break;
     case "delete-vendor":
       if (confirm("Remove this vendor and their details?")) {
-        await run(async () => { await data.deleteVendor(param); go("#/planning", "Vendor removed."); });
+        await run(async () => { const back = main.querySelector("#vendor-form")?.dataset.back ?? "#/planning";
+        await data.deleteVendor(param); go(back, "Vendor removed."); });
       }
       break;
     case "delete-link":

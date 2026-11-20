@@ -303,9 +303,10 @@ export const data = {
 
   // ---------- Planning: to-dos and vendors ----------
 
-  /** Adds one to-do, or several ({ title, due }) at once, like the starter checklist. */
+  /** Adds one to-do, or several ({ title, due, event_id }) at once, like the starter checklist. */
   async addTasks(tasks) {
-    await rest("POST", "tasks", tasks.map((t) => ({ wedding_id: state.wedding.id, title: t.title, due: t.due || null })), "return=minimal");
+    await rest("POST", "tasks", tasks.map((t) => ({ wedding_id: state.wedding.id, title: t.title, due: t.due || null,
+      ...(t.event_id ? { event_id: t.event_id } : {}) })), "return=minimal");
     await this.load();
   },
   async saveTask(id, changes) { await update("tasks", id, changes); await this.load(); },
@@ -326,6 +327,9 @@ export const data = {
   guest: (id) => state.guests.find((g) => g.id === id),
   item: (id) => state.registry.find((i) => i.id === id),
   vendor: (id) => state.vendors.find((v) => v.id === id),
+  /** The vendors and to-dos linked to one event. */
+  eventVendors: (id) => state.vendors.filter((v) => v.event_id === id),
+  eventTasks: (id) => state.tasks.filter((t) => t.event_id === id),
 
   /** Attending people, declined guests and guests still to reply (same as the app). */
   rsvpCounts(eventID) {

@@ -143,6 +143,10 @@ create table if not exists vendors (
   created_at timestamptz not null default now()
 );
 
+-- A to-do or vendor can belong to one event (optional). Deleting the event keeps them, unlinked.
+alter table tasks add column if not exists event_id uuid references events on delete set null;
+alter table vendors add column if not exists event_id uuid references events on delete set null;
+
 -- A new guest's invite code: 16 random letters and digits, easy to put in a link.
 create or replace function make_invite_code() returns text language sql volatile as $$
   select substr(replace(gen_random_uuid()::text, '-', ''), 1, 16)
