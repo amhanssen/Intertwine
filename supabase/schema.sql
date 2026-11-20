@@ -118,6 +118,31 @@ create table if not exists registry_links (
   created_at timestamptz not null default now()
 );
 
+-- The couple's planning (couple website, Planning tab). Private: guests never see these.
+-- To-dos for the wedding, with an optional due date.
+create table if not exists tasks (
+  id uuid primary key default gen_random_uuid(),
+  wedding_id uuid not null references weddings on delete cascade,
+  title text not null check (char_length(title) <= 300),
+  due date,
+  done boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+-- Vendors: photographer, florist, caterer… with their contact details.
+create table if not exists vendors (
+  id uuid primary key default gen_random_uuid(),
+  wedding_id uuid not null references weddings on delete cascade,
+  category text not null default '',
+  name text not null,
+  contact_name text not null default '',
+  phone text not null default '',
+  email text not null default '',
+  website text not null default '',
+  notes text not null default '' check (char_length(notes) <= 5000),
+  created_at timestamptz not null default now()
+);
+
 -- A new guest's invite code: 16 random letters and digits, easy to put in a link.
 create or replace function make_invite_code() returns text language sql volatile as $$
   select substr(replace(gen_random_uuid()::text, '-', ''), 1, 16)
@@ -135,6 +160,8 @@ alter table updates enable row level security;
 alter table registry_items enable row level security;
 alter table registry_gifts enable row level security;
 alter table registry_links enable row level security;
+alter table tasks enable row level security;
+alter table vendors enable row level security;
 
 create or replace function owns_wedding(w uuid) returns boolean
 language sql stable security definer set search_path = public as $$
@@ -176,6 +203,14 @@ create policy "couple owns gifts" on registry_gifts for all to authenticated
 
 drop policy if exists "couple owns registry links" on registry_links;
 create policy "couple owns registry links" on registry_links for all to authenticated
+  using (owns_wedding(wedding_id)) with check (owns_wedding(wedding_id));
+
+drop policy if exists "couple owns tasks" on tasks;
+create policy "couple owns tasks" on tasks for all to authenticated
+  using (owns_wedding(wedding_id)) with check (owns_wedding(wedding_id));
+
+drop policy if exists "couple owns vendors" on vendors;
+create policy "couple owns vendors" on vendors for all to authenticated
   using (owns_wedding(wedding_id)) with check (owns_wedding(wedding_id));
 
 -- ---------- Photos ----------

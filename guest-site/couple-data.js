@@ -145,6 +145,9 @@ async function uploadPhoto(file) {
 export const state = {
   wedding: null, events: [], guests: [], rsvps: [], questions: [],
   registry: [], gifts: [], links: [],
+  tasks: [], vendors: [],
+  // False until supabase/schema.sql has been re-run with the planning tables.
+  planningReady: true,
 };
 
 const sortEvents = (a, b) =>
@@ -209,7 +212,7 @@ export const data = {
 
   signOut() {
     saveSession(null);
-    Object.assign(state, { wedding: null, events: [], guests: [], rsvps: [], questions: [], registry: [], gifts: [], links: [] });
+    Object.assign(state, { wedding: null, events: [], guests: [], rsvps: [], questions: [], registry: [], gifts: [], links: [], tasks: [], vendors: [] });
   },
 
   /** Loads the couple's wedding (the newest one, like the app). Returns false if there's none yet. */
@@ -217,18 +220,28 @@ export const data = {
     const [wedding] = await select("weddings", `owner_id=eq.${session.userID}&order=created_at.desc&limit=1`);
     if (!wedding) { state.wedding = null; return false; }
     const w = `wedding_id=eq.${wedding.id}`;
-    const [events, guests, questions, registry, links] = await Promise.all([
+    let planningReady = true;
+    // The planning tables may not exist yet; the rest of the site still works without them.
+    const planning = (table) => select(table, `${w}&order=created_at`).catch((error) => {
+      if (error instanceof SignedOut) throw error;
+      planningReady = false;
+      return [];
+    });
+    const [events, guests, questions, registry, links, tasks, vendors] = await Promise.all([
       select("events", w),
       select("guests", `${w}&order=created_at`),
       select("questions", `${w}&order=asked_at.desc`),
       select("registry_items", `${w}&order=created_at`),
       select("registry_links", `${w}&order=created_at`),
+      planning("tasks"),
+      planning("vendors"),
     ]);
     const [rsvps, gifts] = await Promise.all([
       events.length ? select("rsvps", `event_id=${inList(events.map((e) => e.id))}`) : [],
       registry.length ? select("registry_gifts", `item_id=${inList(registry.map((i) => i.id))}&order=given_at.desc`) : [],
     ]);
-    Object.assign(state, { wedding, events: events.sort(sortEvents), guests, rsvps, questions, registry, gifts, links });
+    Object.assign(state, { wedding, events: events.sort(sortEvents), guests, rsvps, questions, registry, gifts, links,
+      tasks, vendors, planningReady });
     return true;
   },
 
@@ -288,11 +301,31 @@ export const data = {
   },
   async deleteLink(id) { await remove("registry_links", id); await this.load(); },
 
+  // ---------- Planning: to-dos and vendors ----------
+
+  /** Adds one to-do, or several ({ title, due }) at once, like the starter checklist. */
+  async addTasks(tasks) {
+    await rest("POST", "tasks", tasks.map((t) => ({ wedding_id: state.wedding.id, title: t.title, due: t.due || null })), "return=minimal");
+    await this.load();
+  },
+  async saveTask(id, changes) { await update("tasks", id, changes); await this.load(); },
+  async deleteTask(id) { await remove("tasks", id); await this.load(); },
+
+  /** Adds or changes a vendor; returns its id. */
+  async saveVendor(id, fields) {
+    if (id) await update("vendors", id, fields);
+    else id = (await insert("vendors", { ...fields, wedding_id: state.wedding.id })).id;
+    await this.load();
+    return id;
+  },
+  async deleteVendor(id) { await remove("vendors", id); await this.load(); },
+
   // ---------- Lookups ----------
 
   event: (id) => state.events.find((e) => e.id === id),
   guest: (id) => state.guests.find((g) => g.id === id),
   item: (id) => state.registry.find((i) => i.id === id),
+  vendor: (id) => state.vendors.find((v) => v.id === id),
 
   /** Attending people, declined guests and guests still to reply (same as the app). */
   rsvpCounts(eventID) {

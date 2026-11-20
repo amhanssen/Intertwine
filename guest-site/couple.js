@@ -1,9 +1,10 @@
 // Intertwine for couples: the couple side of the app as a website, so couples can plan
 // from any phone or computer without installing the app. Same account, same wedding.
-// Pages follow the app's couple tabs (Home, Events, Guests, Registry). Each page is a
+// Pages follow the app's couple tabs (Home, Events, Guests, Registry), plus Planning
+// (to-dos and vendors), which is only on the website for now. Each page is a
 // function that returns HTML; the address after "#" picks the page.
 
-import { data, state, inviteLink, SignedOut } from "./couple-data.js";
+import { data, state, inviteLink, SignedOut } from "./couple-data.js?v=17";
 
 const main = document.querySelector("main");
 
@@ -61,6 +62,10 @@ const icons = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   close: '<path d="M6 6l12 12M18 6 6 18"/>',
   camera: '<path d="M4 8h3l1.5-2.5h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
+  checklist: '<rect x="5" y="4.5" width="14" height="16" rx="2.5"/><path d="M9 3h6v3H9z"/><path d="m9 13 2 2 4-4.5"/>',
+  phone: '<path d="M5 4.5h3.5l1.5 4-2 1.5a11 11 0 0 0 6 6l1.5-2 4 1.5V19a1.5 1.5 0 0 1-1.5 1.5A15.5 15.5 0 0 1 3.5 6 1.5 1.5 0 0 1 5 4.5Z"/>',
+  mail: '<rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="m4 7 8 6 8-6"/>',
+  text: '<path d="M4 5.5h16v10H9l-4 3.5v-3.5H4z"/><path d="M8 10.5h8"/>',
   sparkle: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/>',
 };
 
@@ -700,6 +705,65 @@ function nextStep(form) {
 
 // ---------- Pages ----------
 
+// ---------- Planning: to-dos and vendors ----------
+
+const vendorTypes = ["Venue", "Photographer", "Videographer", "Caterer", "Florist", "Music / DJ", "Officiant",
+  "Hair & makeup", "Cake & desserts", "Planner", "Rentals", "Transportation", "Attire", "Stationery", "Other"];
+
+/** Common wedding to-dos and how many months before the wedding to do them. */
+const starterTasks = [
+  ["Set your budget", 12], ["Book the venue", 12], ["Book a photographer", 10], ["Book the caterer", 9],
+  ["Choose an officiant", 9], ["Book the florist", 6], ["Find your wedding outfits", 6], ["Send save-the-dates", 6],
+  ["Book hair & makeup", 4], ["Order the cake", 3], ["Send invite links to guests", 2], ["Get your marriage license", 1],
+  ["Make the seating plan", 0.5], ["Confirm times with every vendor", 0.25],
+];
+
+/** The starter checklist, with due dates counted back from the wedding (none if already past). */
+function starterList() {
+  const wedding = toDate(state.wedding.date);
+  return starterTasks.map(([title, months]) => {
+    const due = new Date(wedding);
+    if (months >= 1) due.setMonth(due.getMonth() - months);
+    else due.setDate(due.getDate() - Math.round(months * 30));
+    const day = `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, "0")}-${String(due.getDate()).padStart(2, "0")}`;
+    return { title, due: daysUntil(day) >= 0 ? day : null };
+  });
+}
+
+const byDue = (a, b) => (a.due ?? "9999").localeCompare(b.due ?? "9999") || a.created_at.localeCompare(b.created_at);
+const openTasks = () => state.tasks.filter((t) => !t.done).sort(byDue);
+/** To-dos that are overdue or due in the next two weeks (shown on Home). */
+const tasksDueSoon = () => openTasks().filter((t) => t.due && daysUntil(t.due) <= 14);
+
+function dueText(day) {
+  if (!day) return "";
+  const days = daysUntil(day);
+  if (days < 0) return `Overdue · was due ${dayShort(day)}`;
+  if (days === 0) return "Due today";
+  if (days === 1) return "Due tomorrow";
+  return `Due ${dayShort(day)}`;
+}
+
+function taskRow(t) {
+  const due = dueText(t.due);
+  const late = t.due && !t.done && daysUntil(t.due) < 0;
+  return `
+    <div class="row task${t.done ? " done" : ""}">
+      <label class="check-row task-check">
+        <input type="checkbox" data-action="task-done" data-id="${t.id}" ${t.done ? "checked" : ""} aria-label="${t.done ? "Mark not done" : "Mark done"}: ${esc(t.title)}">
+        <span class="text"><span class="headline">${esc(t.title)}</span>${due ? `<span class="subheadline ${late ? "late" : "secondary"}">${due}</span>` : ""}</span>
+      </label>
+      <button class="icon-button" type="button" data-action="delete-task" data-id="${t.id}" aria-label="Remove ${esc(t.title)}">${icon(icons.close, 18)}</button>
+    </div>`;
+}
+
+const telHref = (phone) => `tel:${phone.replace(/[^\d+]/g, "")}`;
+const webHref = (url) => (/^https?:\/\//i.test(url) ? url : `https://${url}`);
+
+function vendorSubtitle(v) {
+  return [v.category, v.contact_name, v.phone].filter(Boolean).map(esc).join(" · ");
+}
+
 const pages = {
   // Home: the countdown, what needs attention and the next event (app: Home tab).
   home() {
@@ -716,6 +780,9 @@ const pages = {
       }),
       ...(data.unanswered().length ? [row({ href: "#/questions", title: count(data.unanswered().length, "guest question"),
         subtitle: "Answer so guests don’t have to text you" })] : []),
+      ...(tasksDueSoon().length ? [row({ href: "#/planning", iconPath: icons.checklist,
+        title: `${count(tasksDueSoon().length, "to-do")} due soon`,
+        subtitle: tasksDueSoon().slice(0, 2).map((t) => esc(t.title)).join(", ") + (tasksDueSoon().length > 2 ? "…" : "") })] : []),
       ...(state.guests.length ? [] : [row({ href: "#/guests", title: "Add your guests", subtitle: "Each guest gets a personal invite link" })]),
       ...(state.events.length ? [] : [row({ href: "#/edit/new", title: "Add your first event", subtitle: "Welcome party, ceremony, brunch…" })]),
     ];
@@ -1011,6 +1078,81 @@ const pages = {
       ${isNew ? "" : '<button class="button tertiary danger" type="button" data-action="delete-item">Remove from registry</button>'}`;
   },
 
+  // Planning: the couple's to-do list and vendors. Only the couple sees this.
+  planning() {
+    const open = openTasks();
+    const done = state.tasks.filter((t) => t.done).sort(byDue);
+    return `
+      ${header("Planning", "Your to-do list and vendors. Only the two of you see this.")}
+      ${state.planningReady ? "" : '<p class="panel warning subheadline">Planning needs a quick database update before it can save. Run <b>supabase/schema.sql</b> again in the Supabase SQL Editor.</p>'}
+      <section class="stack">
+        <h2 class="title3">To-do</h2>
+        ${state.tasks.length ? `<p class="subheadline secondary">${done.length} of ${state.tasks.length} done${open.length ? "" : " · All done!"}</p>` : ""}
+        <form class="panel stack-sm" id="task-form">
+          <div class="two-up wide-first">
+            ${field("task-title", "New to-do", '<input id="task-title" name="title" placeholder="Book the florist" maxlength="300" required>')}
+            ${field("task-due", "Due (optional)", '<input id="task-due" name="due" type="date">')}
+          </div>
+          <button class="button secondary" type="submit">${icon(icons.plus, 20)}Add to-do</button>
+        </form>
+        ${open.length ? `<div class="row-group">${open.map(taskRow).join("")}</div>` : ""}
+        ${state.tasks.length ? "" : `
+          <div class="panel accent stack-sm">
+            <p class="headline">Not sure where to start?</p>
+            <p class="subheadline">Add a checklist of the usual wedding to-dos, with due dates counted back from ${dayShort(state.wedding.date)}. You can remove any you don’t need.</p>
+            <button class="button primary" type="button" data-action="starter-tasks">${icon(icons.sparkle, 20)}Add a starter checklist</button>
+          </div>`}
+        ${done.length ? `
+          <details class="done-tasks">
+            <summary class="subheadline secondary">Done (${done.length})</summary>
+            <div class="row-group">${done.map(taskRow).join("")}</div>
+          </details>` : ""}
+      </section>
+      <section class="stack">
+        <h2 class="title3">Vendors</h2>
+        <p class="subheadline secondary">Phone numbers, emails and notes for everyone you’ve booked, in one place.</p>
+        ${state.vendors.length ? `<div class="row-group">${state.vendors.map((v) => row({
+          href: `#/vendor/${v.id}`, title: esc(v.name), subtitle: vendorSubtitle(v), iconPath: icons.person,
+        })).join("")}</div>` : ""}
+        <a class="button ${state.vendors.length ? "secondary" : "primary"}" href="#/vendor/new">${icon(icons.plus, 20)}Add a vendor</a>
+      </section>`;
+  },
+
+  // Add or change a vendor, with buttons to call, text or email them.
+  vendor(id) {
+    const isNew = id === "new";
+    const v = isNew ? { category: "", name: "", contact_name: "", phone: "", email: "", website: "", notes: "" } : data.vendor(id);
+    if (!v) return notFound();
+    const actions = isNew ? [] : [
+      v.phone && `<a class="button secondary" href="${esc(telHref(v.phone))}">${icon(icons.phone, 20)}Call</a>`,
+      v.phone && `<a class="button secondary" href="sms:${esc(v.phone.replace(/[^\d+]/g, ""))}">${icon(icons.text, 20)}Text</a>`,
+      v.email && `<a class="button secondary" href="mailto:${esc(v.email)}">${icon(icons.mail, 20)}Email</a>`,
+      v.website && `<a class="button secondary" href="${esc(webHref(v.website))}" target="_blank" rel="noopener">${icon(icons.link, 20)}Website</a>`,
+    ].filter(Boolean);
+    const known = vendorTypes.includes(v.category);
+    return `
+      ${back("#/planning", "Planning")}
+      ${header(isNew ? "Add a vendor" : esc(v.name), isNew ? "" : esc(v.category))}
+      ${actions.length ? `<div class="contact-actions">${actions.join("")}</div>` : ""}
+      <form class="stack-lg" id="vendor-form" data-id="${isNew ? "" : v.id}">
+        ${field("v-category", "What they do", `<select id="v-category" name="category">
+          <option value="" ${v.category ? "" : "selected"} disabled>Choose one</option>
+          ${vendorTypes.map((t) => `<option ${t === v.category ? "selected" : ""}>${t}</option>`).join("")}
+          ${v.category && !known ? `<option selected>${esc(v.category)}</option>` : ""}
+        </select>`)}
+        ${field("v-name", "Business name", `<input id="v-name" name="name" value="${esc(v.name)}" placeholder="Bloom & Co." required>`)}
+        ${field("v-contact", "Contact person (optional)", `<input id="v-contact" name="contact" value="${esc(v.contact_name)}" placeholder="Who you talk to">`)}
+        <div class="two-up">
+          ${field("v-phone", "Phone", `<input id="v-phone" name="phone" type="tel" value="${esc(v.phone)}" placeholder="(555) 123-4567" autocomplete="off">`)}
+          ${field("v-email", "Email", `<input id="v-email" name="email" type="email" value="${esc(v.email)}" placeholder="name@example.com" autocomplete="off">`)}
+        </div>
+        ${field("v-website", "Website (optional)", `<input id="v-website" name="website" value="${esc(v.website)}" placeholder="https://…">`)}
+        ${field("v-notes", "Notes", `<textarea id="v-notes" name="notes" placeholder="Price, deposit paid, arrival time, what’s included…">${esc(v.notes)}</textarea>`)}
+        <button class="button primary" type="submit">${isNew ? "Add vendor" : "Save changes"}</button>
+      </form>
+      ${isNew ? "" : '<button class="button tertiary danger" type="button" data-action="delete-vendor">Remove vendor</button>'}`;
+  },
+
   // Questions guests asked, with answers.
   questions() {
     const eventName = (id) => data.event(id)?.name;
@@ -1143,7 +1285,7 @@ function notFound() {
 // ---------- Routing ----------
 
 const tabs = { home: "home", questions: "home", wedding: "home", events: "events", event: "events", edit: "events", live: "events",
-  guests: "guests", guest: "guests", registry: "registry", item: "registry" };
+  guests: "guests", guest: "guests", registry: "registry", item: "registry", planning: "planning", vendor: "planning" };
 
 function route() {
   const [path, param] = location.hash.replace(/^#\/?/, "").split("/");
@@ -1335,6 +1477,22 @@ main.addEventListener("submit", async (e) => {
     if (await busy(form, "Adding…", () => data.addLink(text(fields, "name"), url))) render({ keepScroll: true });
   }
 
+  if (form.id === "task-form") {
+    if (await busy(form, "Adding…", () => data.addTasks([{ title: text(fields, "title"), due: optionalDate(fields, "due") }]))) {
+      render({ keepScroll: true });
+      main.querySelector("#task-title")?.focus();
+    }
+  }
+
+  if (form.id === "vendor-form") {
+    const website = text(fields, "website");
+    if (await busy(form, "Saving…", () => data.saveVendor(form.dataset.id || null, {
+      category: text(fields, "category"), name: text(fields, "name"), contact_name: text(fields, "contact"),
+      phone: text(fields, "phone"), email: text(fields, "email"), website: website ? webHref(website) : "",
+      notes: text(fields, "notes"),
+    }))) { go("#/planning", form.dataset.id ? "Vendor saved." : "Vendor added."); }
+  }
+
   if (form.classList.contains("answer-form")) {
     if (await busy(form, "Sending…", () => data.answer(form.dataset.id, text(fields, "answer")))) {
       render({ keepScroll: true });
@@ -1389,6 +1547,11 @@ main.addEventListener("change", async (e) => {
     // Name a new event after its type until the couple types their own name.
     const name = main.querySelector("#name");
     if (!name.value || eventTypes.includes(name.value)) name.value = target.value === "Other" ? "" : target.value;
+  }
+  if (target.dataset.action === "task-done") {
+    target.disabled = true;
+    try { await data.saveTask(target.dataset.id, { done: target.checked }); render({ keepScroll: true }); }
+    catch (error) { target.checked = !target.checked; target.disabled = false; showError(target.closest("section"), error); }
   }
   if (target.dataset.action === "thank-you") {
     target.disabled = true;
@@ -1620,6 +1783,17 @@ main.addEventListener("click", async (e) => {
     case "delete-item":
       if (confirm("Remove this from your registry? Guests won’t see it any more.")) {
         await run(async () => { await data.deleteItem(param); location.hash = "#/registry"; });
+      }
+      break;
+    case "starter-tasks":
+      await run(async () => { await data.addTasks(starterList()); render({ keepScroll: true }); });
+      break;
+    case "delete-task":
+      await run(async () => { await data.deleteTask(button.dataset.id); render({ keepScroll: true }); });
+      break;
+    case "delete-vendor":
+      if (confirm("Remove this vendor and their details?")) {
+        await run(async () => { await data.deleteVendor(param); go("#/planning", "Vendor removed."); });
       }
       break;
     case "delete-link":
